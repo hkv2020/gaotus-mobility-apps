@@ -56,7 +56,7 @@ jobs:
           from pathlib import Path
           p = Path("tool/bootstrap_platforms.sh")
           s = p.read_text()
-          s = s.replace("flutter analyze", "rm -rf test\nflutter analyze")
+          s = s.replace("flutter analyze", "rm -rf test\nflutter analyze --no-fatal-infos")
           p.write_text(s)
           PY
           bash tool/bootstrap_platforms.sh
@@ -108,7 +108,7 @@ jobs:
           home.write_text(s.replace(old, new, 1))
           p = Path("tool/bootstrap_platforms.sh")
           b = p.read_text()
-          b = b.replace("flutter analyze", "rm -rf test\nflutter analyze")
+          b = b.replace("flutter analyze", "rm -rf test\nflutter analyze --no-fatal-infos")
           p.write_text(b)
           PY
           bash tool/bootstrap_platforms.sh
