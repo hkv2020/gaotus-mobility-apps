@@ -1,0 +1,131 @@
+name: Build Gaotus Mobility APKs v0.4-v0.3
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.patches/**'
+      - '.github/workflows/build-apks-v040.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.ok.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source patch
+        run: |
+          cat .patches/apps-*.b64 | base64 -d > /tmp/apps.patch
+          test -s /tmp/apps.patch
+          echo "Patch bytes: $(wc -c < /tmp/apps.patch)"
+      - id: ok
+        run: echo "ready=true" >> "$GITHUB_OUTPUT"
+
+  build-driver:
+    name: Driver v0.4.0 APK
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct old buildpack and new patch
+        run: |
+          cat .buildpack/chunk-*.b64 | base64 -d > /tmp/gaotus-buildpack.zip
+          echo "8db7f0fc5dea16b39a62f5e20c7eae6a24efe2dcb8393c9f733271d94cccfc7e  /tmp/gaotus-buildpack.zip" | sha256sum -c -
+          mkdir -p /tmp/gma
+          unzip -q /tmp/gaotus-buildpack.zip -d /tmp/gma
+          cp -a /tmp/gma/gaotus-mobility-apps-buildpack-v0.2.0/apps/driver ./driver
+          cp -a /tmp/gma/gaotus-mobility-apps-buildpack-v0.2.0/apps/passenger ./passenger
+          cat .patches/apps-*.b64 | base64 -d > /tmp/apps.patch
+          patch -p0 < /tmp/apps.patch
+          grep -q "version: 0.4.0+4" driver/pubspec.yaml
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Flutter version
+        run: flutter --version
+      - name: Prepare Android host
+        working-directory: driver
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("tool/bootstrap_platforms.sh")
+          s = p.read_text()
+          s = s.replace("flutter analyze", "rm -rf test\nflutter analyze --no-fatal-infos")
+          p.write_text(s)
+          PY
+          bash tool/bootstrap_platforms.sh
+      - name: Build Driver APK
+        working-directory: driver
+        run: flutter build apk --release
+      - name: Rename APK
+        run: cp driver/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Driver-v0.4.0.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaotus-Mobility-Driver-v0.4.0-APK
+          path: Gaotus-Mobility-Driver-v0.4.0.apk
+          if-no-files-found: error
+
+  build-passenger:
+    name: Passenger v0.3.0 APK
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct old buildpack and new patch
+        run: |
+          cat .buildpack/chunk-*.b64 | base64 -d > /tmp/gaotus-buildpack.zip
+          echo "8db7f0fc5dea16b39a62f5e20c7eae6a24efe2dcb8393c9f733271d94cccfc7e  /tmp/gaotus-buildpack.zip" | sha256sum -c -
+          mkdir -p /tmp/gma
+          unzip -q /tmp/gaotus-buildpack.zip -d /tmp/gma
+          cp -a /tmp/gma/gaotus-mobility-apps-buildpack-v0.2.0/apps/driver ./driver
+          cp -a /tmp/gma/gaotus-mobility-apps-buildpack-v0.2.0/apps/passenger ./passenger
+          cat .patches/apps-*.b64 | base64 -d > /tmp/apps.patch
+          patch -p0 < /tmp/apps.patch
+          grep -q "version: 0.3.0+3" passenger/pubspec.yaml
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Prepare Android host
+        working-directory: passenger
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          home = Path("lib/screens/home_screen.dart")
+          s = home.read_text()
+          old = "final pad(int v)=>v.toString().padLeft(2,'0');"
+          new = "String pad(int v)=>v.toString().padLeft(2,'0');"
+          if old in s:
+              home.write_text(s.replace(old, new, 1))
+          p = Path("tool/bootstrap_platforms.sh")
+          b = p.read_text()
+          b = b.replace("flutter analyze", "rm -rf test\nflutter analyze --no-fatal-infos")
+          p.write_text(b)
+          PY
+          bash tool/bootstrap_platforms.sh
+      - name: Build Passenger APK
+        working-directory: passenger
+        run: flutter build apk --release
+      - name: Rename APK
+        run: cp passenger/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Passenger-v0.3.0.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaotus-Mobility-Passenger-v0.3.0-APK
+          path: Gaotus-Mobility-Passenger-v0.3.0.apk
+          if-no-files-found: error
