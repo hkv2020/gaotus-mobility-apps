@@ -32,12 +32,15 @@ x=x.replace(
     "  final int luggageSmall;\n  final String group;\n  final String badge;\n  final int sortOrder;\n  String get priceLabel",
     1
 )
-old_parse="    luggageSmall: (j['luggage_small'] as num?)?.toInt() ?? 0,\n  );"
-new_parse="    luggageSmall: (j['luggage_small'] as num?)?.toInt() ?? 0,\n    group: (j['group'] ?? 'recommended').toString(),\n    badge: (j['badge'] ?? '').toString(),\n    sortOrder: (j['sort_order'] as num?)?.toInt() ?? 0,\n  );"
-if old_parse not in x:
-    raise SystemExit('vehicle quote parser contract missing')
-x=x.replace(old_parse,new_parse,1)
-if "final String group;" not in x or "badge:" not in x:
+price_line="    price: (j['price'] as num?)?.toDouble() ?? double.tryParse('${j['price']}') ?? 0,"
+if price_line not in x:
+    raise SystemExit('vehicle quote price parser contract missing')
+x=x.replace(
+    price_line,
+    price_line+"\n    priceFormatted: (j['price_formatted'] ?? '').toString(),\n    luggageLarge: (j['luggage_large'] as num?)?.toInt() ?? 0,\n    luggageSmall: (j['luggage_small'] as num?)?.toInt() ?? 0,\n    group: (j['group'] ?? 'recommended').toString(),\n    badge: (j['badge'] ?? '').toString(),\n    sortOrder: (j['sort_order'] as num?)?.toInt() ?? 0,",
+    1
+)
+if "final String group;" not in x or "badge:" not in x or "priceFormatted:" not in x:
     raise SystemExit('vehicle catalog model patch failed')
 p.write_text(x)
 
