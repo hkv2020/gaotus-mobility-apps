@@ -150,9 +150,9 @@ x=x.replace(
 """        DraggableScrollableSheet(
           initialChildSize:.55,
           minChildSize:.38,
-          maxChildSize:currentQuote.vehicles.length<=2?.70:.88,
+          maxChildSize:currentQuote.vehicles.length<=2 ? .70 : .88,
           snap:true,
-          snapSizes:currentQuote.vehicles.length<=2?const <double>[.55,.70]:const <double>[.55,.88],
+          snapSizes:currentQuote.vehicles.length<=2 ? const <double>[.55,.70] : const <double>[.55,.88],
 """,1)
 
 old_summary="""  String _journeySummary(Map<String,dynamic> j){
@@ -202,7 +202,7 @@ assert "static const version = '0.5.1';" in Path('passenger/lib/config/app_confi
 quote=Path('passenger/lib/screens/quote_screen.dart').read_text()
 assert 'PickupConfirmScreen' in quote
 assert 'Pick-up updated. Fare recalculated' in quote
-assert 'currentQuote.vehicles.length<=2?.70:.88' in quote
+assert 'currentQuote.vehicles.length<=2 ? .70 : .88' in quote
 assert "if(delta<=20)return 'Now';" in quote
 assert 'destinationChanged' in Path('passenger/lib/screens/home_screen.dart').read_text()
 print('Passenger v0.5.1 pickup confirmation patch applied')
