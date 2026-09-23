@@ -232,6 +232,9 @@ if old not in x:
     raise SystemExit('destination free-text contract missing')
 x = x.replace(old, new, 1)
 
+# Remove the now-unused separate destination search screen import.
+x = x.replace("import 'place_search_screen.dart';\n", '')
+
 # Visible build marker.
 x = x.replace('Passenger v0.4.5', 'Passenger v0.4.6')
 x = x.replace('Startup recovery + Google fallback + trip markers', 'Inline address suggestions + Google fallback')
