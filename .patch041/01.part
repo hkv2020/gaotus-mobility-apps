@@ -1,0 +1,122 @@
+r)}:${pad(pickupAt.minute)}',
+       'passengers': passengers,
+@@ -115,7 +138,7 @@
+             const Divider(),
+             ListTile(leading: const Icon(Icons.receipt_long_outlined), title: const Text('My trips'), trailing: Text('${s.bookings.length}'), onTap: () => Navigator.pop(sheetContext)),
+             ListTile(leading: const Icon(Icons.refresh_rounded), title: const Text('Refresh rides'), onTap: () { Navigator.pop(sheetContext); s.refreshBookings(); }),
+-            ListTile(leading: const Icon(Icons.help_outline_rounded), title: const Text('Help & safety'), subtitle: const Text('Coming in the next UI sprint'), onTap: () {}),
++            ListTile(leading: const Icon(Icons.help_outline_rounded), title: const Text('Help & safety'), subtitle: const Text('Trip support and safety tools'), onTap: () => Navigator.pop(sheetContext)),
+             const Divider(),
+             ListTile(leading: const Icon(Icons.logout_rounded), title: const Text('Sign out'), onTap: () { Navigator.pop(sheetContext); s.logout(); }),
+           ]),
+@@ -204,9 +227,9 @@
+                       const Divider(),
+                       TextField(
+                         controller: dropoff,
+-                        textInputAction: TextInputAction.done,
+-                        onSubmitted: (_) => getQuote(),
+-                        decoration: const InputDecoration(fillColor: Colors.transparent, prefixIcon: Icon(Icons.stop_rounded, size: 19), hintText: 'Where are you going?', border: InputBorder.none, enabledBorder: InputBorder.none, focusedBorder: InputBorder.none),
++                        readOnly: true,
++                        onTap: chooseDestination,
++                        decoration: const InputDecoration(fillColor: Colors.transparent, prefixIcon: Icon(Icons.stop_rounded, size: 19), hintText: 'Where are you going?', suffixIcon: Icon(Icons.search_rounded), border: InputBorder.none, enabledBorder: InputBorder.none, focusedBorder: InputBorder.none),
+                       ),
+                     ]),
+                   ),
+diff -ruN passenger040_orig/lib/screens/pickup_confirm_screen.dart passenger041_work/lib/screens/pickup_confirm_screen.dart
+--- passenger040_orig/lib/screens/pickup_confirm_screen.dart	2026-09-23 01:27:57.000000000 +0000
++++ passenger041_work/lib/screens/pickup_confirm_screen.dart	2026-09-23 09:46:17.149195228 +0000
+@@ -1,90 +1,79 @@
++import 'dart:async';
+ import 'package:flutter/material.dart';
+ import 'package:flutter_map/flutter_map.dart';
+ import 'package:latlong2/latlong.dart';
++import '../models/place_selection.dart';
++import '../state/passenger_session.dart';
+ import '../theme/app_theme.dart';
+ import '../widgets/premium.dart';
+ 
+ class PickupConfirmScreen extends StatefulWidget {
+-  const PickupConfirmScreen({super.key, required this.initial});
++  const PickupConfirmScreen({super.key, required this.session, required this.initial, this.initialAddress=''});
++  final PassengerSession session;
+   final LatLng initial;
+-  @override
+-  State<PickupConfirmScreen> createState() => _PickupConfirmScreenState();
++  final String initialAddress;
++  @override State<PickupConfirmScreen> createState()=>_PickupConfirmScreenState();
+ }
+ 
+-class _PickupConfirmScreenState extends State<PickupConfirmScreen> {
+-  late LatLng selected = widget.initial;
++class _PickupConfirmScreenState extends State<PickupConfirmScreen>{
++  late LatLng selected;
++  late String address;
++  Timer? debounce;
++  bool resolving=false;
+ 
+-  @override
+-  Widget build(BuildContext context) => Scaffold(
+-        body: Stack(
+-          children: <Widget>[
+-            Positioned.fill(
+-              child: FlutterMap(
+-                options: MapOptions(
+-                  initialCenter: widget.initial,
+-                  initialZoom: 17,
+-                  onPositionChanged: (camera, hasGesture) {
+-                    if (hasGesture) selected = camera.center;
+-                  },
+-                ),
+-                children: <Widget>[
+-                  TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.gaotus.mobility.passenger'),
+-                ],
+-              ),
+-            ),
+-            const IgnorePointer(
+-              child: Center(
+-                child: Padding(
+-                  padding: EdgeInsets.only(bottom: 32),
+-                  child: Column(
+-                    mainAxisSize: MainAxisSize.min,
+-                    children: <Widget>[
+-                      DecoratedBox(
+-                        decoration: BoxDecoration(color: AppTheme.ink, borderRadius: BorderRadius.all(Radius.circular(999))),
+-                        child: Padding(
+-                          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+-                          child: Text('Pick-up here', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+-                        ),
+-                      ),
+-                      SizedBox(height: 6),
+-                      Icon(Icons.location_on_rounded, color: AppTheme.ink, size: 48),
+-                    ],
+-                  ),
+-                ),
+-              ),
+-            ),
+-            Positioned(top: MediaQuery.paddingOf(context).top + 10, left: 16, child: FloatingCircleButton(icon: Icons.arrow_back, onPressed: () => Navigator.pop(context))),
+-            Align(
+-              alignment: Alignment.bottomCenter,
+-              child: Container(
+-                padding: EdgeInsets.fromLTRB(20, 8, 20, MediaQuery.paddingOf(context).bottom + 18),
+-                decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+-                child: Column(
+-                  mainAxisSize: MainAxisSize.min,
+-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+-                  children: <Widget>[
+-                    const SheetHandle(),
+-                    Text('Confirm pick-up spot', textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall),
+-                    const SizedBox(height: 5),
+-                    Text('Drag the map to move the pin', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: AppTheme.softInk)),
+-                    const SizedBox(height: 18),
+-                    Container(
+-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+-                      decoration: BoxDecoration(color: const Color(0xFFF3F3F1), borderRadius: BorderRadius.circular(18)),
+-                      child: const Row(children: <Widget>[
+-                        Icon(Icons.trip_origin, size: 18),
+-                        SizedBox(width: 12),
+-                        Expanded(child: Text('Selected map location', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+-                        Icon(Icons.gps_fixed),
+-                      ]),
+-                    ),
+-                    const SizedBox(height: 14),
+-          
