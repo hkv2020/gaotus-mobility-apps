@@ -18,28 +18,27 @@ p.write_text(x)
 
 p=Path('passenger/lib/models/vehicle_quote.dart')
 x=p.read_text()
+if "this.luggageSmall=0});" not in x:
+    raise SystemExit('vehicle quote constructor contract missing')
 x=x.replace(
-"""  const VehicleQuote({required this.id, required this.title, required this.price, this.subtitle='', this.image='', this.passengers=0, this.priceFormatted='', this.luggageLarge=0, this.luggageSmall=0});""",
-"""  const VehicleQuote({required this.id, required this.title, required this.price, this.subtitle='', this.image='', this.passengers=0, this.priceFormatted='', this.luggageLarge=0, this.luggageSmall=0, this.group='recommended', this.badge='', this.sortOrder=0});""",1)
+    "this.luggageSmall=0});",
+    "this.luggageSmall=0, this.group='recommended', this.badge='', this.sortOrder=0});",
+    1
+)
+if "  final int luggageSmall;\n  String get priceLabel" not in x:
+    raise SystemExit('vehicle quote fields contract missing')
 x=x.replace(
-"""  final int luggageSmall;
-  String get priceLabel""",
-"""  final int luggageSmall;
-  final String group;
-  final String badge;
-  final int sortOrder;
-  String get priceLabel""",1)
-x=x.replace(
-"""    luggageSmall: (j['luggage_small'] as num?)?.toInt() ?? 0,
-  );
-}""",
-"""    luggageSmall: (j['luggage_small'] as num?)?.toInt() ?? 0,
-    group: (j['group'] ?? 'recommended').toString(),
-    badge: (j['badge'] ?? '').toString(),
-    sortOrder: (j['sort_order'] as num?)?.toInt() ?? 0,
-  );
-}""",1)
-if "final String group;" not in x or "badge:" not in x: raise SystemExit('vehicle catalog model patch failed')
+    "  final int luggageSmall;\n  String get priceLabel",
+    "  final int luggageSmall;\n  final String group;\n  final String badge;\n  final int sortOrder;\n  String get priceLabel",
+    1
+)
+old_parse="    luggageSmall: (j['luggage_small'] as num?)?.toInt() ?? 0,\n  );"
+new_parse="    luggageSmall: (j['luggage_small'] as num?)?.toInt() ?? 0,\n    group: (j['group'] ?? 'recommended').toString(),\n    badge: (j['badge'] ?? '').toString(),\n    sortOrder: (j['sort_order'] as num?)?.toInt() ?? 0,\n  );"
+if old_parse not in x:
+    raise SystemExit('vehicle quote parser contract missing')
+x=x.replace(old_parse,new_parse,1)
+if "final String group;" not in x or "badge:" not in x:
+    raise SystemExit('vehicle catalog model patch failed')
 p.write_text(x)
 
 p=Path('passenger/lib/screens/quote_screen.dart')
