@@ -43,6 +43,8 @@ jobs:
           cp -a /tmp/gma/gaotus-mobility-apps-buildpack-v0.2.0/apps/passenger ./passenger
           cat .patches/apps-*.b64 | base64 -d > /tmp/apps.patch
           patch -p0 < /tmp/apps.patch
+          # Repair one transfer typo introduced in the chunked patch transport.
+          sed -i 's/unawaired(/unawaited(/g' driver/lib/state/app_session.dart
           grep -q "version: 0.4.0+4" driver/pubspec.yaml
       - uses: actions/setup-java@v4
         with:
