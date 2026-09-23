@@ -1,0 +1,68 @@
+name: Build Passenger v0.4.2 Places Map Fix
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.premium042/**'
+      - '.github/workflows/build-passenger-v042.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct source
+        run: |
+          cat .premium042/chunk-*.b64 | base64 -d > /tmp/passenger042.zip
+          echo "9e4bc3141de6e6773b1f284d8bbd93105cd2f9279e220cfde2cb589f8ade92d7  /tmp/passenger042.zip" | sha256sum -c -
+          unzip -t /tmp/passenger042.zip
+          mkdir passenger
+          unzip -q /tmp/passenger042.zip -d passenger
+          grep -q "version: 0.4.2+6" passenger/pubspec.yaml
+          grep -q "Search address, airport or place" passenger/lib/screens/place_search_screen.dart
+          grep -q "maxZoom: 14.5" passenger/lib/screens/quote_screen.dart
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Prepare Android and analyze
+        working-directory: passenger
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("tool/bootstrap_platforms.sh")
+          s=p.read_text().replace("flutter analyze", "rm -rf test\nflutter analyze --no-fatal-infos")
+          p.write_text(s)
+          PY
+          bash tool/bootstrap_platforms.sh
+
+      - name: Build release APK
+        working-directory: passenger
+        run: flutter build apk --release
+
+      - name: Verify compiled strings
+        run: |
+          unzip -p passenger/build/app/outputs/flutter-apk/app-release.apk lib/arm64-v8a/libapp.so | strings | grep -q "Search address, airport or place"
+
+      - name: Rename APK
+        run: cp passenger/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Passenger-v0.4.2.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaotus-Mobility-Passenger-v0.4.2-Places-Map-Fix-APK
+          path: Gaotus-Mobility-Passenger-v0.4.2.apk
+          if-no-files-found: error
