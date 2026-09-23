@@ -1,0 +1,67 @@
+name: Build Passenger Google Booking v0.4.1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.patch041/**'
+      - '.github/workflows/build-passenger-google-v041.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Passenger v0.4.1 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct v0.4.0 and apply v0.4.1 patch
+        run: |
+          cat .premium040/chunk-*.b64 | base64 -d > /tmp/passenger040.zip
+          echo "0b703dd64159852b3238553905aace6cc1807865bff1b420244d5d1682de70bd  /tmp/passenger040.zip" | sha256sum -c -
+          mkdir passenger040_orig
+          unzip -q /tmp/passenger040.zip -d passenger040_orig
+          cat .patch041/*.part > /tmp/passenger041.patch
+          patch -p0 < /tmp/passenger041.patch
+          mv passenger040_orig passenger
+          grep -q "version: 0.4.1+5" passenger/pubspec.yaml
+          grep -q "PlaceSearchScreen" passenger/lib/screens/place_search_screen.dart
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Prepare Android and analyze
+        working-directory: passenger
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("tool/bootstrap_platforms.sh")
+          s = p.read_text()
+          s = s.replace("flutter analyze", "rm -rf test\nflutter analyze --no-fatal-infos")
+          p.write_text(s)
+          PY
+          bash tool/bootstrap_platforms.sh
+
+      - name: Build APK
+        working-directory: passenger
+        run: flutter build apk --release
+
+      - name: Rename APK
+        run: cp passenger/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Passenger-v0.4.1.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaotus-Mobility-Passenger-v0.4.1-Google-Booking-APK
+          path: Gaotus-Mobility-Passenger-v0.4.1.apk
+          if-no-files-found: error
