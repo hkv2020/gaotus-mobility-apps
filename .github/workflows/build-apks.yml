@@ -1,0 +1,101 @@
+name: Build Gaotus Mobility APKs
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.buildpack/**'
+      - '.github/workflows/build-apks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.ok.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct buildpack
+        run: |
+          cat .buildpack/chunk-*.b64 | base64 -d > /tmp/gaotus-buildpack.zip
+          echo "8db7f0fc5dea16b39a62f5e20c7eae6a24efe2dcb8393c9f733271d94cccfc7e  /tmp/gaotus-buildpack.zip" | sha256sum -c -
+          unzip -t /tmp/gaotus-buildpack.zip
+      - id: ok
+        run: echo "ready=true" >> "$GITHUB_OUTPUT"
+
+  build-driver:
+    name: Driver APK
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract buildpack
+        run: |
+          cat .buildpack/chunk-*.b64 | base64 -d > /tmp/gaotus-buildpack.zip
+          mkdir -p /tmp/gma
+          unzip -q /tmp/gaotus-buildpack.zip -d /tmp/gma
+          cp -a /tmp/gma/gaotus-mobility-apps-buildpack-v0.2.0/apps/driver ./driver
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Flutter version
+        run: flutter --version
+      - name: Prepare Android host
+        working-directory: driver
+        run: bash tool/bootstrap_platforms.sh
+      - name: Build Driver APK
+        working-directory: driver
+        run: flutter build apk --release
+      - name: Rename APK
+        run: cp driver/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Driver-v0.3.0.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaotus-Mobility-Driver-v0.3.0-APK
+          path: Gaotus-Mobility-Driver-v0.3.0.apk
+          if-no-files-found: error
+
+  build-passenger:
+    name: Passenger APK
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract buildpack
+        run: |
+          cat .buildpack/chunk-*.b64 | base64 -d > /tmp/gaotus-buildpack.zip
+          mkdir -p /tmp/gma
+          unzip -q /tmp/gaotus-buildpack.zip -d /tmp/gma
+          cp -a /tmp/gma/gaotus-mobility-apps-buildpack-v0.2.0/apps/passenger ./passenger
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Flutter version
+        run: flutter --version
+      - name: Prepare Android host
+        working-directory: passenger
+        run: bash tool/bootstrap_platforms.sh
+      - name: Build Passenger APK
+        working-directory: passenger
+        run: flutter build apk --release
+      - name: Rename APK
+        run: cp passenger/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Passenger-v0.2.0.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaotus-Mobility-Passenger-v0.2.0-APK
+          path: Gaotus-Mobility-Passenger-v0.2.0.apk
+          if-no-files-found: error
