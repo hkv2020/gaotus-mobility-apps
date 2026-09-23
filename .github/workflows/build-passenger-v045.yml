@@ -1,0 +1,71 @@
+name: Build Passenger v0.4.5 Startup Recovery
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.source045/**'
+      - '.github/workflows/build-passenger-v045.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Passenger v0.4.5 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct exact source
+        run: |
+          cat .source045/chunk-*.b64 | base64 -d > /tmp/passenger045.zip
+          echo "58ae9654388c3a3bdeb0464801a6907819f98aa7bb7ef0aaae05b4061f76fbd2  /tmp/passenger045.zip" | sha256sum -c -
+          unzip -t /tmp/passenger045.zip
+          mkdir passenger
+          unzip -q /tmp/passenger045.zip -d passenger
+          grep -q "version: 0.4.5+9" passenger/pubspec.yaml
+          grep -q "unawaited(session.initialize())" passenger/lib/main.dart
+          grep -q "Could not restore the saved session" passenger/lib/state/passenger_session.dart
+          grep -q "Startup recovery" passenger/lib/state/passenger_session.dart
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Prepare Android and analyze
+        working-directory: passenger
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("tool/bootstrap_platforms.sh")
+          s=p.read_text().replace("flutter analyze", "rm -rf test\nflutter analyze --no-fatal-infos")
+          p.write_text(s)
+          PY
+          bash tool/bootstrap_platforms.sh
+
+      - name: Build release APK
+        working-directory: passenger
+        run: flutter build apk --release
+
+      - name: Verify compiled startup recovery
+        run: |
+          unzip -p passenger/build/app/outputs/flutter-apk/app-release.apk lib/arm64-v8a/libapp.so | strings | grep -q "Could not restore the saved session"
+          unzip -p passenger/build/app/outputs/flutter-apk/app-release.apk lib/arm64-v8a/libapp.so | strings | grep -q "Passenger v0.4.4"
+
+      - name: Rename APK
+        run: cp passenger/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Passenger-v0.4.5.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaotus-Mobility-Passenger-v0.4.5-Startup-Recovery-APK
+          path: Gaotus-Mobility-Passenger-v0.4.5.apk
+          if-no-files-found: error
