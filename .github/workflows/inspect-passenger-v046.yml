@@ -60,14 +60,11 @@ jobs:
           grep -q "hasCoordinates" passenger/lib/models/place_selection.dart
           grep -q "Passenger v0.4.6" passenger/lib/screens/home_screen.dart
 
-      - name: Print quote screen and shared UI
+      - name: Print session and pickup confirm
         run: |
-          echo "===== FILE:quote_screen.dart ====="
-          cat passenger/lib/screens/quote_screen.dart
-          echo "===== END:quote_screen.dart ====="
-          echo "===== FILE:premium.dart ====="
-          cat passenger/lib/widgets/premium.dart
-          echo "===== END:premium.dart ====="
-          echo "===== FILE:app_theme.dart ====="
-          cat passenger/lib/theme/app_theme.dart
-          echo "===== END:app_theme.dart ====="
+          echo "===== FILE:passenger_session.dart ====="
+          cat passenger/lib/state/passenger_session.dart
+          echo "===== END:passenger_session.dart ====="
+          echo "===== FILE:pickup_confirm_screen.dart ====="
+          cat passenger/lib/screens/pickup_confirm_screen.dart
+          echo "===== END:pickup_confirm_screen.dart ====="
