@@ -30,10 +30,11 @@ p.write_text(x.replace(needle, insert, 1))
 
 p = Path('passenger/lib/screens/trip_screen.dart')
 x = p.read_text()
-x = x.replace(
+for old_tracking in (
     "if (tracking != null && !const <String>{'completed','cancelled','canceled'}.contains(booking.status.toLowerCase()))",
-    "if (driver != null && tracking != null && const <String>{'assigned','enroute','arrived','pob'}.contains(ride.status.toLowerCase()))"
-)
+    "if (tracking != null && !const <String>{'completed','cancelled','canceled'}.contains(booking!.status.toLowerCase()))",
+):
+    x = x.replace(old_tracking, "if (driver != null && tracking != null && const <String>{'assigned','enroute','arrived','pob'}.contains(ride.status.toLowerCase()))")
 x = x.replace(
     "if (pickup != null) Marker(point: pickup, width: 42, height: 42, child: const _TripPin(icon: Icons.circle, dark: true)),",
     "if (pickup != null) Marker(point: pickup, width: 42, height: 42, child: const _TripPin(icon: Icons.location_on_rounded, dark: true)),"
