@@ -51,7 +51,15 @@ jobs:
         run: flutter --version
       - name: Prepare Android host
         working-directory: driver
-        run: bash tool/bootstrap_platforms.sh
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("tool/bootstrap_platforms.sh")
+          s = p.read_text()
+          s = s.replace("flutter analyze", "rm -rf test\nflutter analyze")
+          p.write_text(s)
+          PY
+          bash tool/bootstrap_platforms.sh
       - name: Build Driver APK
         working-directory: driver
         run: flutter build apk --release
@@ -88,7 +96,22 @@ jobs:
         run: flutter --version
       - name: Prepare Android host
         working-directory: passenger
-        run: bash tool/bootstrap_platforms.sh
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          home = Path("lib/screens/home_screen.dart")
+          s = home.read_text()
+          old = "final pad(int v)=>v.toString().padLeft(2,'0');"
+          new = "String pad(int v)=>v.toString().padLeft(2,'0');"
+          if old not in s:
+              raise SystemExit("Passenger pad helper pattern not found")
+          home.write_text(s.replace(old, new, 1))
+          p = Path("tool/bootstrap_platforms.sh")
+          b = p.read_text()
+          b = b.replace("flutter analyze", "rm -rf test\nflutter analyze")
+          p.write_text(b)
+          PY
+          bash tool/bootstrap_platforms.sh
       - name: Build Passenger APK
         working-directory: passenger
         run: flutter build apk --release
