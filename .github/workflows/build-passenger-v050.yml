@@ -13,6 +13,7 @@ on:
       - '.source050fix/**'
       - '.github/workflows/build-passenger-v050.yml'
 
+# v0.5.0 retry after Dart syntax fix
 permissions:
   contents: read
 
