@@ -241,6 +241,7 @@ assert "static const version = '0.4.6';" in Path('passenger/lib/config/app_confi
 assert 'destinationChanged' in home
 assert 'selectDestinationSuggestion' in home
 assert 'destinationSuggestions.isNotEmpty' in home
+assert 'destinationSessionToken' in home
 assert 'readOnly: true' not in home.split("controller: dropoff", 1)[1].split("),", 1)[0]
 assert 'Passenger v0.4.6' in home
 print('Passenger v0.4.6 inline destination autocomplete patch applied')
