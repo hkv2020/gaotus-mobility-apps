@@ -1,0 +1,107 @@
+diff -ruN passenger/lib/config/app_config.dart passenger/lib/config/app_config.dart
+--- passenger/lib/config/app_config.dart	2026-09-23 09:45:30.000000000 +0000
++++ passenger/lib/config/app_config.dart	2026-09-23 10:49:09.000000000 +0000
+@@ -1,6 +1,6 @@
+ final class AppConfig {
+   static const appName = 'Gaotus Mobility';
+-  static const version = '0.4.1';
++  static const version = '0.4.2';
+   static const defaultServer = 'https://beaphoenix.eu';
+   static const namespace = '/wp-json/gaotus-mobility/v1';
+ 
+diff -ruN passenger/lib/screens/home_screen.dart passenger/lib/screens/home_screen.dart
+--- passenger/lib/screens/home_screen.dart	2026-09-23 09:45:51.000000000 +0000
++++ passenger/lib/screens/home_screen.dart	2026-09-23 10:49:32.000000000 +0000
+@@ -140,6 +140,7 @@
+             ListTile(leading: const Icon(Icons.refresh_rounded), title: const Text('Refresh rides'), onTap: () { Navigator.pop(sheetContext); s.refreshBookings(); }),
+             ListTile(leading: const Icon(Icons.help_outline_rounded), title: const Text('Help & safety'), subtitle: const Text('Trip support and safety tools'), onTap: () => Navigator.pop(sheetContext)),
+             const Divider(),
++            const ListTile(leading: Icon(Icons.info_outline_rounded), title: Text('Passenger v0.4.2'), subtitle: Text('Places suggestions + map fit fix')),
+             ListTile(leading: const Icon(Icons.logout_rounded), title: const Text('Sign out'), onTap: () { Navigator.pop(sheetContext); s.logout(); }),
+           ]),
+         ),
+diff -ruN passenger/lib/screens/place_search_screen.dart passenger/lib/screens/place_search_screen.dart
+--- passenger/lib/screens/place_search_screen.dart	2026-09-23 09:45:30.000000000 +0000
++++ passenger/lib/screens/place_search_screen.dart	2026-09-23 10:49:32.000000000 +0000
+@@ -20,6 +20,7 @@
+   List<PlaceSuggestion> suggestions=<PlaceSuggestion>[];
+   bool loading=false;
+   String? error;
++  int requestSerial=0;
+   late final String sessionToken;
+ 
+   @override void initState(){
+@@ -37,12 +38,15 @@
+   }
+ 
+   Future<void> search(String value) async{
++    final query=value.trim();
++    if(query.length<2)return;
++    final serial=++requestSerial;
+     setState((){loading=true;error=null;});
+     try{
+-      final rows=await widget.session.placeAutocomplete(value,sessionToken:sessionToken,lat:widget.biasLat,lng:widget.biasLng);
+-      if(mounted)setState(()=>suggestions=rows);
+-    }catch(e){if(mounted)setState(()=>error='$e');}
+-    finally{if(mounted)setState(()=>loading=false);}
++      final rows=await widget.session.placeAutocomplete(query,sessionToken:sessionToken,lat:widget.biasLat,lng:widget.biasLng);
++      if(mounted&&serial==requestSerial)setState(()=>suggestions=rows);
++    }catch(e){if(mounted&&serial==requestSerial)setState(()=>error='$e');}
++    finally{if(mounted&&serial==requestSerial)setState(()=>loading=false);}
+   }
+ 
+   Future<void> pick(PlaceSuggestion suggestion) async{
+@@ -58,12 +62,12 @@
+     appBar:AppBar(title:Text(widget.title)),
+     body:SafeArea(child:Column(children:<Widget>[
+       Padding(padding:const EdgeInsets.fromLTRB(16,12,16,8),child:TextField(
+-        controller:controller,focusNode:focus,onChanged:changed,textInputAction:TextInputAction.search,
++        controller:controller,focusNode:focus,onChanged:changed,onSubmitted:search,textInputAction:TextInputAction.search,
+         decoration:InputDecoration(prefixIcon:const Icon(Icons.search_rounded),hintText:'Search address, airport or place',suffixIcon:controller.text.isEmpty?null:IconButton(onPressed:(){controller.clear();changed('');setState((){});},icon:const Icon(Icons.close_rounded))),
+       )),
+       if(loading)const LinearProgressIndicator(minHeight:2),
+       if(error!=null)Padding(padding:const EdgeInsets.all(16),child:Text(error!,style:TextStyle(color:Theme.of(context).colorScheme.error))),
+-      Expanded(child:suggestions.isEmpty&&!loading&&error==null?const Center(child:Padding(padding:EdgeInsets.all(28),child:Text('Start typing a street, postcode, airport or destination.',textAlign:TextAlign.center,style:TextStyle(color:AppTheme.softInk)))):ListView.separated(
++      Expanded(child:suggestions.isEmpty&&!loading&&error==null?Center(child:Padding(padding:const EdgeInsets.all(28),child:Text(controller.text.trim().length<2?'Start typing a street, postcode, airport or destination.':'No suggestions found. Try the full postcode, street name or airport.',textAlign:TextAlign.center,style:const TextStyle(color:AppTheme.softInk)))):ListView.separated(
+         padding:const EdgeInsets.symmetric(vertical:6),itemCount:suggestions.length,separatorBuilder:(_,__)=>const Divider(height:1,indent:64),
+         itemBuilder:(context,i){final s=suggestions[i];return ListTile(
+           leading:const CircleAvatar(backgroundColor:Color(0xFFF1F1EF),child:Icon(Icons.location_on_outlined,color:AppTheme.ink)),
+diff -ruN passenger/lib/screens/quote_screen.dart passenger/lib/screens/quote_screen.dart
+--- passenger/lib/screens/quote_screen.dart	2026-09-23 01:28:36.000000000 +0000
++++ passenger/lib/screens/quote_screen.dart	2026-09-23 10:49:32.000000000 +0000
+@@ -100,7 +100,7 @@
+               options: MapOptions(
+                 initialCenter: initial,
+                 initialZoom: 13,
+-                initialCameraFit: points.length == 2 ? CameraFit.bounds(bounds: LatLngBounds.fromPoints(points), padding: const EdgeInsets.fromLTRB(45, 100, 45, 420)) : null,
++                initialCameraFit: points.length == 2 ? CameraFit.bounds(bounds: LatLngBounds.fromPoints(points), padding: const EdgeInsets.fromLTRB(52, 120, 52, 120), maxZoom: 14.5) : null,
+               ),
+               children: <Widget>[
+                 TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.gaotus.mobility.passenger'),
+@@ -110,11 +110,11 @@
+           ),
+           Positioned(top: MediaQuery.paddingOf(context).top + 12, left: 16, child: FloatingCircleButton(icon: Icons.arrow_back_rounded, onPressed: () => Navigator.pop(context))),
+           DraggableScrollableSheet(
+-            initialChildSize: .62,
+-            minChildSize: .50,
++            initialChildSize: .56,
++            minChildSize: .48,
+             maxChildSize: .92,
+             snap: true,
+-            snapSizes: const <double>[.62, .92],
++            snapSizes: const <double>[.56, .92],
+             builder: (context, controller) => Container(
+               decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(30)), boxShadow: <BoxShadow>[BoxShadow(color: Color(0x22000000), blurRadius: 22, offset: Offset(0, -5))]),
+               child: ListView(
+diff -ruN passenger/pubspec.yaml passenger/pubspec.yaml
+--- passenger/pubspec.yaml	2026-09-23 09:45:30.000000000 +0000
++++ passenger/pubspec.yaml	2026-09-23 10:49:09.000000000 +0000
+@@ -1,7 +1,7 @@
+ name: gaotus_mobility_passenger
+ description: Passenger app for Gaotus Mobility Platform.
+ publish_to: none
+-version: 0.4.1+5
++version: 0.4.2+6
+ environment:
+   sdk: '>=3.4.0 <4.0.0'
+ dependencies:
