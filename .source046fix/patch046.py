@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 # Passenger v0.4.6 - inline destination autocomplete in the main ride sheet.
 
@@ -148,86 +149,89 @@ if old not in x:
 x = x.replace(old, new, 1)
 
 # Make the destination field editable and render live suggestions directly below it.
-old = """                      TextField(
-                        controller: dropoff,
-                        readOnly: true,
-                        onTap: chooseDestination,
-                        decoration: const InputDecoration(fillColor: Colors.transparent, prefixIcon: Icon(Icons.stop_rounded, size: 19), hintText: 'Where are you going?', suffixIcon: Icon(Icons.search_rounded), border: InputBorder.none, enabledBorder: InputBorder.none, focusedBorder: InputBorder.none),
-                      ),
-"""
-new = """                      TextField(
-                        controller: dropoff,
-                        onChanged: destinationChanged,
-                        onSubmitted: (_) {
-                          if (destinationSuggestions.isNotEmpty) {
-                            selectDestinationSuggestion(destinationSuggestions.first);
-                          }
-                        },
-                        textInputAction: TextInputAction.search,
-                        decoration: InputDecoration(
-                          fillColor: Colors.transparent,
-                          prefixIcon: const Icon(Icons.stop_rounded, size: 19),
-                          hintText: 'Where are you going?',
-                          suffixIcon: destinationSearching
-                              ? const Padding(
-                                  padding: EdgeInsets.all(14),
-                                  child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-                                )
-                              : const Icon(Icons.search_rounded),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                        ),
-                      ),
-                      if (destinationSearchError != null && destinationSearchError!.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
-                          child: Text(
-                            destinationSearchError!,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12, fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      if (destinationSuggestions.isNotEmpty)
-                        Container(
-                          constraints: const BoxConstraints(maxHeight: 220),
-                          margin: const EdgeInsets.fromLTRB(8, 0, 8, 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: const Color(0xFFE5E5E2)),
-                            boxShadow: const <BoxShadow>[BoxShadow(color: Color(0x18000000), blurRadius: 18, offset: Offset(0, 6))],
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: ListView.separated(
-                            shrinkWrap: true,
-                            padding: EdgeInsets.zero,
-                            itemCount: destinationSuggestions.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1, indent: 52),
-                            itemBuilder: (context, i) {
-                              final suggestion = destinationSuggestions[i];
-                              return ListTile(
-                                dense: true,
-                                leading: const Icon(Icons.location_on_outlined, size: 22),
-                                title: Text(
-                                  suggestion.mainText.isNotEmpty ? suggestion.mainText : suggestion.text,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontWeight: FontWeight.w800),
-                                ),
-                                subtitle: suggestion.secondaryText.isNotEmpty
-                                    ? Text(suggestion.secondaryText, maxLines: 1, overflow: TextOverflow.ellipsis)
-                                    : null,
-                                onTap: () => selectDestinationSuggestion(suggestion),
-                              );
-                            },
-                          ),
-                        ),
-"""
-if old not in x:
+pattern = re.compile(
+    r"""(?ms)^(?P<indent>\s*)TextField\(\s*
+\s*controller:\s*dropoff,\s*
+\s*readOnly:\s*true,\s*
+\s*onTap:\s*chooseDestination,\s*
+\s*decoration:\s*const\s+InputDecoration\(fillColor:\s*Colors\.transparent,\s*prefixIcon:\s*Icon\(Icons\.stop_rounded,\s*size:\s*19\),\s*hintText:\s*'Where are you going\?',\s*suffixIcon:\s*Icon\(Icons\.search_rounded\),\s*border:\s*InputBorder\.none,\s*enabledBorder:\s*InputBorder\.none,\s*focusedBorder:\s*InputBorder\.none\),\s*
+\s*\),"""
+)
+match = pattern.search(x)
+if not match:
     raise SystemExit('destination TextField contract missing')
-x = x.replace(old, new, 1)
+indent = match.group('indent')
+new_block = """TextField(
+  controller: dropoff,
+  onChanged: destinationChanged,
+  onSubmitted: (_) {
+    if (destinationSuggestions.isNotEmpty) {
+      selectDestinationSuggestion(destinationSuggestions.first);
+    }
+  },
+  textInputAction: TextInputAction.search,
+  decoration: InputDecoration(
+    fillColor: Colors.transparent,
+    prefixIcon: const Icon(Icons.stop_rounded, size: 19),
+    hintText: 'Where are you going?',
+    suffixIcon: destinationSearching
+        ? const Padding(
+            padding: EdgeInsets.all(14),
+            child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+          )
+        : const Icon(Icons.search_rounded),
+    border: InputBorder.none,
+    enabledBorder: InputBorder.none,
+    focusedBorder: InputBorder.none,
+  ),
+),
+if (destinationSearchError != null && destinationSearchError!.isNotEmpty)
+  Padding(
+    padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
+    child: Text(
+      destinationSearchError!,
+      maxLines: 3,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12, fontWeight: FontWeight.w700),
+    ),
+  ),
+if (destinationSuggestions.isNotEmpty)
+  Container(
+    constraints: const BoxConstraints(maxHeight: 220),
+    margin: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: const Color(0xFFE5E5E2)),
+      boxShadow: const <BoxShadow>[BoxShadow(color: Color(0x18000000), blurRadius: 18, offset: Offset(0, 6))],
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: ListView.separated(
+      shrinkWrap: true,
+      padding: EdgeInsets.zero,
+      itemCount: destinationSuggestions.length,
+      separatorBuilder: (_, __) => const Divider(height: 1, indent: 52),
+      itemBuilder: (context, i) {
+        final suggestion = destinationSuggestions[i];
+        return ListTile(
+          dense: true,
+          leading: const Icon(Icons.location_on_outlined, size: 22),
+          title: Text(
+            suggestion.mainText.isNotEmpty ? suggestion.mainText : suggestion.text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          subtitle: suggestion.secondaryText.isNotEmpty
+              ? Text(suggestion.secondaryText, maxLines: 1, overflow: TextOverflow.ellipsis)
+              : null,
+          onTap: () => selectDestinationSuggestion(suggestion),
+        );
+      },
+    ),
+  ),"""
+new_block = '\n'.join(indent + line if line else line for line in new_block.splitlines())
+x = x[:match.start()] + new_block + x[match.end():]
 
 # Visible build marker.
 x = x.replace('Passenger v0.4.5', 'Passenger v0.4.6')
