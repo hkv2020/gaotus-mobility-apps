@@ -10,7 +10,7 @@ on:
       - '.source043fix/**'
       - '.source045fix/**'
       - '.source046fix/**'
-      - '.github/workflows/build-passenger-v045.yml'
+      - '.github/workflows/build-passenger-v046.yml'
 
 permissions:
   contents: read
@@ -51,7 +51,8 @@ jobs:
           grep -q "maxZoom: 14.5" passenger/lib/screens/quote_screen.dart
           python3 .source043fix/patch043.py
           python3 .source045fix/patch045.py
-          grep -q "version: 0.4.5+9" passenger/pubspec.yaml
+          python3 .source046fix/patch046.py
+          grep -q "version: 0.4.6+10" passenger/pubspec.yaml
           grep -q "destinationChanged" passenger/lib/screens/home_screen.dart
           grep -q "selectDestinationSuggestion" passenger/lib/screens/home_screen.dart
           grep -q "unawaited(session.initialize())" passenger/lib/main.dart
@@ -90,6 +91,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Gaotus-Mobility-Passenger-v0.4.6-Startup-Recovery-APK
+          name: Gaotus-Mobility-Passenger-v0.4.6-Inline-Autocomplete-APK
           path: Gaotus-Mobility-Passenger-v0.4.6.apk
           if-no-files-found: error
