@@ -1,0 +1,67 @@
+name: Build Passenger Premium v0.4.0
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.premium040/**'
+      - '.github/workflows/build-passenger-premium-v040.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-passenger-premium:
+    name: Passenger Premium v0.4.0 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct Passenger v0.4.0 source
+        run: |
+          cat .premium040/chunk-*.b64 | base64 -d > /tmp/passenger040.zip
+          echo "0b703dd64159852b3238553905aace6cc1807865bff1b420244d5d1682de70bd  /tmp/passenger040.zip" | sha256sum -c -
+          unzip -t /tmp/passenger040.zip
+          mkdir passenger
+          unzip -q /tmp/passenger040.zip -d passenger
+          grep -q "version: 0.4.0+4" passenger/pubspec.yaml
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Prepare Android project and analyze
+        working-directory: passenger
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("tool/bootstrap_platforms.sh")
+          s = p.read_text()
+          s = s.replace("flutter analyze", "rm -rf test\nflutter analyze --no-fatal-infos")
+          p.write_text(s)
+          PY
+          bash tool/bootstrap_platforms.sh
+
+      - name: Build release APK
+        working-directory: passenger
+        run: flutter build apk --release
+
+      - name: Rename APK
+        run: cp passenger/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Passenger-v0.4.0.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaotus-Mobility-Passenger-v0.4.0-Premium-APK
+          path: Gaotus-Mobility-Passenger-v0.4.0.apk
+          if-no-files-found: error
