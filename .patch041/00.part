@@ -1,0 +1,139 @@
+diff -ruN passenger040_orig/lib/config/app_config.dart passenger041_work/lib/config/app_config.dart
+--- passenger040_orig/lib/config/app_config.dart	2026-09-23 01:26:30.000000000 +0000
++++ passenger041_work/lib/config/app_config.dart	2026-09-23 09:45:30.600158269 +0000
+@@ -1,6 +1,6 @@
+ final class AppConfig {
+   static const appName = 'Gaotus Mobility';
+-  static const version = '0.4.0';
++  static const version = '0.4.1';
+   static const defaultServer = 'https://beaphoenix.eu';
+   static const namespace = '/wp-json/gaotus-mobility/v1';
+ 
+diff -ruN passenger040_orig/lib/core/api_client.dart passenger041_work/lib/core/api_client.dart
+--- passenger040_orig/lib/core/api_client.dart	2026-09-23 00:57:47.000000000 +0000
++++ passenger041_work/lib/core/api_client.dart	2026-09-23 09:45:30.599947211 +0000
+@@ -52,6 +52,9 @@
+   Future<Map<String,dynamic>> bookings() => request('POST','/customer/bookings/list');
+   Future<Map<String,dynamic>> booking(int id) => request('POST','/customer/booking/$id');
+   Future<Map<String,dynamic>> quote(Map<String,Object?> body) => request('POST','/customer/quote',body:body);
++  Future<Map<String,dynamic>> placeAutocomplete(String input,{String sessionToken='',double? lat,double? lng}) => request('POST','/customer/maps/autocomplete',body:{'input':input,'session_token':sessionToken,'lat':lat,'lng':lng});
++  Future<Map<String,dynamic>> placeDetails(String placeId,{String sessionToken=''}) => request('POST','/customer/maps/place',body:{'place_id':placeId,'session_token':sessionToken});
++  Future<Map<String,dynamic>> reverseGeocode(double lat,double lng) => request('POST','/customer/maps/reverse',body:{'lat':lat,'lng':lng});
+   Future<Map<String,dynamic>> createBooking(Map<String,Object?> body) => request('POST','/customer/bookings',body:body);
+   Future<Map<String,dynamic>> payment(int id) => request('POST','/customer/booking/$id/payment');
+   Future<Map<String,dynamic>> cancel(int id) => request('POST','/customer/booking/$id/cancel');
+diff -ruN passenger040_orig/lib/models/place_selection.dart passenger041_work/lib/models/place_selection.dart
+--- passenger040_orig/lib/models/place_selection.dart	1970-01-01 00:00:00.000000000 +0000
++++ passenger041_work/lib/models/place_selection.dart	2026-09-23 09:45:30.109984404 +0000
+@@ -0,0 +1,25 @@
++final class PlaceSuggestion {
++  const PlaceSuggestion({required this.placeId, required this.text, required this.mainText, required this.secondaryText});
++  final String placeId;
++  final String text;
++  final String mainText;
++  final String secondaryText;
++  factory PlaceSuggestion.fromJson(Map<String,dynamic> j)=>PlaceSuggestion(
++    placeId:(j['place_id']??'').toString(), text:(j['text']??'').toString(),
++    mainText:(j['main_text']??'').toString(), secondaryText:(j['secondary_text']??'').toString(),
++  );
++}
++
++final class PlaceSelection {
++  const PlaceSelection({required this.address, required this.lat, required this.lng, this.placeId='', this.name=''});
++  final String address;
++  final double lat;
++  final double lng;
++  final String placeId;
++  final String name;
++  factory PlaceSelection.fromJson(Map<String,dynamic> j)=>PlaceSelection(
++    address:(j['address']??'').toString(), name:(j['name']??'').toString(), placeId:(j['place_id']??'').toString(),
++    lat:(j['lat'] as num?)?.toDouble()??double.tryParse('${j['lat']}')??0,
++    lng:(j['lng'] as num?)?.toDouble()??double.tryParse('${j['lng']}')??0,
++  );
++}
+diff -ruN passenger040_orig/lib/screens/home_screen.dart passenger041_work/lib/screens/home_screen.dart
+--- passenger040_orig/lib/screens/home_screen.dart	2026-09-23 01:27:57.000000000 +0000
++++ passenger041_work/lib/screens/home_screen.dart	2026-09-23 09:45:51.590247708 +0000
+@@ -2,9 +2,11 @@
+ import 'package:flutter_map/flutter_map.dart';
+ import 'package:latlong2/latlong.dart';
+ import '../state/passenger_session.dart';
++import '../models/place_selection.dart';
+ import '../theme/app_theme.dart';
+ import '../widgets/premium.dart';
+ import 'pickup_confirm_screen.dart';
++import 'place_search_screen.dart';
+ import 'quote_screen.dart';
+ import 'trip_screen.dart';
+ 
+@@ -20,7 +22,7 @@
+   final dropoff = TextEditingController();
+   final map = MapController();
+   int passengers = 1;
+-  double? pickupLat, pickupLng;
++  double? pickupLat, pickupLng, dropoffLat, dropoffLng;
+   LatLng center = const LatLng(51.5074, -0.1278);
+   DateTime pickupAt = DateTime.now().add(const Duration(minutes: 10));
+ 
+@@ -42,6 +44,10 @@
+         pickupLng = p.longitude;
+       });
+       map.move(here, 15.5);
++      try {
++        final resolved = await widget.session.reverseGeocode(p.latitude, p.longitude);
++        if (mounted && resolved.address.isNotEmpty) setState(() => pickup.text = resolved.address);
++      } catch (_) {}
+     } catch (_) {}
+   }
+ 
+@@ -55,20 +61,35 @@
+         initial = LatLng(pickupLat!, pickupLng!);
+       }
+       if (!mounted) return;
+-      final selected = await Navigator.of(context).push<LatLng>(MaterialPageRoute(builder: (_) => PickupConfirmScreen(initial: initial)));
++      final selected = await Navigator.of(context).push<PlaceSelection>(MaterialPageRoute(builder: (_) => PickupConfirmScreen(session: widget.session, initial: initial, initialAddress: pickup.text)));
+       if (selected == null) return;
+       setState(() {
+-        pickupLat = selected.latitude;
+-        pickupLng = selected.longitude;
+-        pickup.text = 'Selected pick-up';
+-        center = selected;
++        pickupLat = selected.lat;
++        pickupLng = selected.lng;
++        pickup.text = selected.address.isEmpty ? 'Selected pick-up' : selected.address;
++        center = LatLng(selected.lat, selected.lng);
+       });
+-      map.move(selected, 16);
++      map.move(LatLng(selected.lat, selected.lng), 16);
+     } catch (error) {
+       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+     }
+   }
+ 
++  Future<void> chooseDestination() async {
++    final selected = await Navigator.of(context).push<PlaceSelection>(MaterialPageRoute(builder: (_) => PlaceSearchScreen(
++      session: widget.session,
++      title: 'Where to?',
++      biasLat: pickupLat ?? center.latitude,
++      biasLng: pickupLng ?? center.longitude,
++    )));
++    if (selected == null) return;
++    setState(() {
++      dropoff.text = selected.address.isNotEmpty ? selected.address : selected.name;
++      dropoffLat = selected.lat;
++      dropoffLng = selected.lng;
++    });
++  }
++
+   Future<void> schedule() async {
+     final d = await showDatePicker(context: context, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)), initialDate: pickupAt);
+     if (d == null || !mounted) return;
+@@ -88,6 +109,8 @@
+       'dropoff': dropoff.text.trim(),
+       'pickup_lat': pickupLat,
+       'pickup_lng': pickupLng,
++      'dropoff_lat': dropoffLat,
++      'dropoff_lng': dropoffLng,
+       'pickup_date': '${pickupAt.year}-${pad(pickupAt.month)}-${pad(pickupAt.day)}',
+       'pickup_time': '${pad(pickupAt.hour)}:${pad(pickupAt.minute)}',
+       'passengers': passengers,
