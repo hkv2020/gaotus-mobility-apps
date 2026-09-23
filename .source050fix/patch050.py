@@ -22,14 +22,14 @@ x=x.replace(
   final String priceFormatted;
   final int luggageLarge;
   final int luggageSmall;
-  String get priceLabel => priceFormatted.isNotEmpty ? priceFormatted : '£\${price.toStringAsFixed(2)}';
+  String get priceLabel => priceFormatted.isNotEmpty ? priceFormatted : '£' + price.toStringAsFixed(2);
   factory VehicleQuote.fromJson""",1)
 x=x.replace(
 """    passengers: (j['passengers'] as num?)?.toInt() ?? 0,
-    price: (j['price'] as num?)?.toDouble() ?? double.tryParse('\${j['price']}') ?? 0,
+    price: (j['price'] as num?)?.toDouble() ?? double.tryParse((j['price'] ?? '').toString()) ?? 0,
 """,
 """    passengers: (j['passengers'] as num?)?.toInt() ?? 0,
-    price: (j['price'] as num?)?.toDouble() ?? double.tryParse('\${j['price']}') ?? 0,
+    price: (j['price'] as num?)?.toDouble() ?? double.tryParse((j['price'] ?? '').toString()) ?? 0,
     priceFormatted: (j['price_formatted'] ?? '').toString(),
     luggageLarge: (j['luggage_large'] as num?)?.toInt() ?? 0,
     luggageSmall: (j['luggage_small'] as num?)?.toInt() ?? 0,
@@ -168,7 +168,7 @@ class _QuoteScreenState extends State<QuoteScreen>{
                 const SheetHandle(),
                 Row(children:<Widget>[
                   Expanded(child:Text('Rides for you',style:Theme.of(context).textTheme.headlineSmall)),
-                  if((j['duration_text']??'').toString().isNotEmpty)StatusPill(label:'Trip \${j['duration_text']}'),
+                  if((j['duration_text']??'').toString().isNotEmpty)StatusPill(label:'Trip '+(j['duration_text']??'').toString()),
                 ]),
                 const SizedBox(height:6),
                 Text(_journeySummary(j),style:Theme.of(context).textTheme.bodyMedium?.copyWith(color:AppTheme.softInk)),
@@ -215,7 +215,7 @@ class _QuoteScreenState extends State<QuoteScreen>{
   }
 
   LatLng? _point(Object? lat,Object? lng){
-    double? parse(Object? v)=>v is num?v.toDouble():double.tryParse('\${v??''}');
+    double? parse(Object? v)=>v is num?v.toDouble():double.tryParse((v??'').toString());
     final a=parse(lat),b=parse(lng);
     return a==null||b==null?null:LatLng(a,b);
   }
@@ -277,7 +277,7 @@ class _VehicleTile extends StatelessWidget{
               Flexible(child:Text(vehicle.title,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:19,fontWeight:FontWeight.w900))),
               if(vehicle.passengers>0)...<Widget>[
                 const SizedBox(width:7),const Icon(Icons.person,size:15),const SizedBox(width:2),
-                Text('\${vehicle.passengers}',style:const TextStyle(fontSize:13,fontWeight:FontWeight.w800)),
+                Text(vehicle.passengers.toString(),style:const TextStyle(fontSize:13,fontWeight:FontWeight.w800)),
               ],
             ]),
             const SizedBox(height:3),
@@ -329,7 +329,7 @@ class _RideActionBar extends StatelessWidget{
           onPressed:busy||selected==null?null:onBook,
           child:busy
             ?const SizedBox(width:22,height:22,child:CircularProgressIndicator(strokeWidth:2.3,color:Colors.white))
-            :Text(selected==null?'Choose a ride':'Choose \${selected!.title}'),
+            :Text(selected==null?'Choose a ride':'Choose '+selected!.title),
         ),
       ]),
     )),
