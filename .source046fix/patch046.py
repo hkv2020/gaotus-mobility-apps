@@ -159,6 +159,10 @@ pattern = re.compile(
 )
 match = pattern.search(x)
 if not match:
+    idx = x.find('controller: dropoff')
+    print('--- HOME DROPOFF CONTEXT START ---')
+    print(x[max(0, idx-1800):idx+4200] if idx >= 0 else x[:6000])
+    print('--- HOME DROPOFF CONTEXT END ---')
     raise SystemExit('destination TextField contract missing')
 indent = match.group('indent')
 new_block = """TextField(
