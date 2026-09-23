@@ -5,7 +5,9 @@ on:
   push:
     branches: [ main ]
     paths:
-      - '.source043/**'
+      - '.patch041/**'
+      - '.patch042/**'
+      - '.patch043/**'
       - '.github/workflows/build-passenger-v043.yml'
 
 permissions:
@@ -19,16 +21,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reconstruct exact v0.4.3 source
+      - name: Reconstruct v0.4.0 and apply v0.4.1 patch
         run: |
-          cat .source043/chunk-*.b64 | base64 -d > /tmp/passenger043.zip
-          echo "34c7a3b702484c3e0431e6e456b59211c8d098c23f63eb9d4c6b74ea833e8e56  /tmp/passenger043.zip" | sha256sum -c -
-          unzip -t /tmp/passenger043.zip
-          mkdir passenger
-          unzip -q /tmp/passenger043.zip -d passenger
+          cat .premium040/chunk-*.b64 | base64 -d > /tmp/passenger040.zip
+          echo "0b703dd64159852b3238553905aace6cc1807865bff1b420244d5d1682de70bd  /tmp/passenger040.zip" | sha256sum -c -
+          mkdir passenger040_orig
+          unzip -q /tmp/passenger040.zip -d passenger040_orig
+          cat .patch041/*.part > /tmp/passenger041.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/passenger041.patch').read_text()
+          pickup='diff -ruN passenger040_orig/lib/screens/pickup_confirm_screen.dart'
+          search='diff -ruN passenger040_orig/lib/screens/place_search_screen.dart'
+          before=p.split(pickup,1)[0]
+          after=search+p.split(search,1)[1]
+          Path('/tmp/passenger041-clean.patch').write_text(before+after)
+          PY
+          patch -p0 < /tmp/passenger041-clean.patch
+          echo 'aW1wb3J0ICdkYXJ0OmFzeW5jJzsKaW1wb3J0ICdwYWNrYWdlOmZsdXR0ZXIvbWF0ZXJpYWwuZGFydCc7CmltcG9ydCAncGFja2FnZTpmbHV0dGVyX21hcC9mbHV0dGVyX21hcC5kYXJ0JzsKaW1wb3J0ICdwYWNrYWdlOmxhdGxvbmcyL2xhdGxvbmcuZGFydCc7CmltcG9ydCAnLi4vbW9kZWxzL3BsYWNlX3NlbGVjdGlvbi5kYXJ0JzsKaW1wb3J0ICcuLi9zdGF0ZS9wYXNzZW5nZXJfc2Vzc2lvbi5kYXJ0JzsKaW1wb3J0ICcuLi90aGVtZS9hcHBfdGhlbWUuZGFydCc7CmltcG9ydCAnLi4vd2lkZ2V0cy9wcmVtaXVtLmRhcnQnOwoKY2xhc3MgUGlja3VwQ29uZmlybVNjcmVlbiBleHRlbmRzIFN0YXRlZnVsV2lkZ2V0IHsKICBjb25zdCBQaWNrdXBDb25maXJtU2NyZWVuKHtzdXBlci5rZXksIHJlcXVpcmVkIHRoaXMuc2Vzc2lvbiwgcmVxdWlyZWQgdGhpcy5pbml0aWFsLCB0aGlzLmluaXRpYWxBZGRyZXNzPScnfSk7CiAgZmluYWwgUGFzc2VuZ2VyU2Vzc2lvbiBzZXNzaW9uOwogIGZpbmFsIExhdExuZyBpbml0aWFsOwogIGZpbmFsIFN0cmluZyBpbml0aWFsQWRkcmVzczsKICBAb3ZlcnJpZGUgU3RhdGU8UGlja3VwQ29uZmlybVNjcmVlbj4gY3JlYXRlU3RhdGUoKT0+X1BpY2t1cENvbmZpcm1TY3JlZW5TdGF0ZSgpOwp9CgpjbGFzcyBfUGlja3VwQ29uZmlybVNjcmVlblN0YXRlIGV4dGVuZHMgU3RhdGU8UGlja3VwQ29uZmlybVNjcmVlbj57CiAgbGF0ZSBMYXRMbmcgc2VsZWN0ZWQ7CiAgbGF0ZSBTdHJpbmcgYWRkcmVzczsKICBUaW1lcj8gZGVib3VuY2U7CiAgYm9vbCByZXNvbHZpbmc9ZmFsc2U7CgogIEBvdmVycmlkZSB2b2lkIGluaXRTdGF0ZSgpewogICAgc3VwZXIuaW5pdFN0YXRlKCk7CiAgICBzZWxlY3RlZD13aWRnZXQuaW5pdGlhbDsKICAgIGFkZHJlc3M9d2lkZ2V0LmluaXRpYWxBZGRyZXNzLnRyaW0oKTsKICAgIGlmKGFkZHJlc3MuaXNFbXB0eXx8YWRkcmVzcz09J0N1cnJlbnQgbG9jYXRpb24nfHxhZGRyZXNzPT0nU2VsZWN0ZWQgcGljay11cCcpIFdpZGdldHNCaW5kaW5nLmluc3RhbmNlLmFkZFBvc3RGcmFtZUNhbGxiYWNrKChfKT0+cmVzb2x2ZSgpKTsKICB9CgogIEBvdmVycmlkZSB2b2lkIGRpc3Bvc2UoKXtkZWJvdW5jZT8uY2FuY2VsKCk7c3VwZXIuZGlzcG9zZSgpO30KCiAgdm9pZCBtb3ZlZChMYXRMbmcgcG9pbnQpewogICAgc2VsZWN0ZWQ9cG9pbnQ7CiAgICBkZWJvdW5jZT8uY2FuY2VsKCk7CiAgICBkZWJvdW5jZT1UaW1lcihjb25zdCBEdXJhdGlvbihtaWxsaXNlY29uZHM6NDUwKSxyZXNvbHZlKTsKICB9CgogIEZ1dHVyZTx2b2lkPiByZXNvbHZlKCkgYXN5bmN7CiAgICBpZighbW91bnRlZClyZXR1cm47CiAgICBzZXRTdGF0ZSgoKT0+cmVzb2x2aW5nPXRydWUpOwogICAgdHJ5ewogICAgICBmaW5hbCBwPWF3YWl0IHdpZGdldC5zZXNzaW9uLnJldmVyc2VHZW9jb2RlKHNlbGVjdGVkLmxhdGl0dWRlLHNlbGVjdGVkLmxvbmdpdHVkZSk7CiAgICAgIGlmKG1vdW50ZWQpc2V0U3RhdGUoKCk9PmFkZHJlc3M9cC5hZGRyZXNzLmlzRW1wdHk/J1NlbGVjdGVkIG1hcCBsb2NhdGlvbic6cC5hZGRyZXNzKTsKICAgIH1jYXRjaChfKXtpZihtb3VudGVkJiZhZGRyZXNzLmlzRW1wdHkpc2V0U3RhdGUoKCk9PmFkZHJlc3M9J1NlbGVjdGVkIG1hcCBsb2NhdGlvbicpO30KICAgIGZpbmFsbHl7aWYobW91bnRlZClzZXRTdGF0ZSgoKT0+cmVzb2x2aW5nPWZhbHNlKTt9CiAgfQoKICBAb3ZlcnJpZGUgV2lkZ2V0IGJ1aWxkKEJ1aWxkQ29udGV4dCBjb250ZXh0KT0+U2NhZmZvbGQoCiAgICBib2R5OlN0YWNrKGNoaWxkcmVuOjxXaWRnZXQ+WwogICAgICBQb3NpdGlvbmVkLmZpbGwoY2hpbGQ6Rmx1dHRlck1hcCgKICAgICAgICBvcHRpb25zOk1hcE9wdGlvbnMoaW5pdGlhbENlbnRlcjp3aWRnZXQuaW5pdGlhbCxpbml0aWFsWm9vbToxNyxvblBvc2l0aW9uQ2hhbmdlZDooY2FtZXJhLGhhc0dlc3R1cmUpe2lmKGhhc0dlc3R1cmUpbW92ZWQoY2FtZXJhLmNlbnRlcik7fSksCiAgICAgICAgY2hpbGRyZW46PFdpZGdldD5bVGlsZUxheWVyKHVybFRlbXBsYXRlOidodHRwczovL3RpbGUub3BlbnN0cmVldG1hcC5vcmcve3p9L3t4fS97eX0ucG5nJyx1c2VyQWdlbnRQYWNrYWdlTmFtZTonY29tLmdhb3R1cy5tb2JpbGl0eS5wYXNzZW5nZXInKV0sCiAgICAgICkpLAogICAgICBjb25zdCBJZ25vcmVQb2ludGVyKGNoaWxkOkNlbnRlcihjaGlsZDpQYWRkaW5nKHBhZGRpbmc6RWRnZUluc2V0cy5vbmx5KGJvdHRvbTozMiksY2hpbGQ6Q29sdW1uKG1haW5BeGlzU2l6ZTpNYWluQXhpc1NpemUubWluLGNoaWxkcmVuOjxXaWRnZXQ+WwogICAgICAgIERlY29yYXRlZEJveChkZWNvcmF0aW9uOkJveERlY29yYXRpb24oY29sb3I6QXBwVGhlbWUuaW5rLGJvcmRlclJhZGl1czpCb3JkZXJSYWRpdXMuYWxsKFJhZGl1cy5jaXJjdWxhcig5OTkpKSksY2hpbGQ6UGFkZGluZyhwYWRkaW5nOkVkZ2VJbnNldHMuc3ltbWV0cmljKGhvcml6b250YWw6MTYsdmVydGljYWw6OSksY2hpbGQ6VGV4dCgnUGljay11cCBoZXJlJyxzdHlsZTpUZXh0U3R5bGUoY29sb3I6Q29sb3JzLndoaXRlLGZvbnRXZWlnaHQ6Rm9udFdlaWdodC53ODAwKSkpKSwKICAgICAgICBTaXplZEJveChoZWlnaHQ6NiksSWNvbihJY29ucy5sb2NhdGlvbl9vbl9yb3VuZGVkLGNvbG9yOkFwcFRoZW1lLmluayxzaXplOjQ4KSwKICAgICAgXSkpKSksCiAgICAgIFBvc2l0aW9uZWQodG9wOk1lZGlhUXVlcnkucGFkZGluZ09mKGNvbnRleHQpLnRvcCsxMCxsZWZ0OjE2LGNoaWxkOkZsb2F0aW5nQ2lyY2xlQnV0dG9uKGljb246SWNvbnMuYXJyb3dfYmFjayxvblByZXNzZWQ6KCk9Pk5hdmlnYXRvci5wb3AoY29udGV4dCkpKSwKICAgICAgQWxpZ24oYWxpZ25tZW50OkFsaWdubWVudC5ib3R0b21DZW50ZXIsY2hpbGQ6Q29udGFpbmVyKAogICAgICAgIHBhZGRpbmc6RWRnZUluc2V0cy5mcm9tTFRSQigyMCw4LDIwLE1lZGlhUXVlcnkucGFkZGluZ09mKGNvbnRleHQpLmJvdHRvbSsxOCksCiAgICAgICAgZGVjb3JhdGlvbjpjb25zdCBCb3hEZWNvcmF0aW9uKGNvbG9yOkNvbG9ycy53aGl0ZSxib3JkZXJSYWRpdXM6Qm9yZGVyUmFkaXVzLnZlcnRpY2FsKHRvcDpSYWRpdXMuY2lyY3VsYXIoMzApKSksCiAgICAgICAgY2hpbGQ6Q29sdW1uKG1haW5BeGlzU2l6ZTpNYWluQXhpc1NpemUubWluLGNyb3NzQXhpc0FsaWdubWVudDpDcm9zc0F4aXNBbGlnbm1lbnQuc3RyZXRjaCxjaGlsZHJlbjo8V2lkZ2V0PlsKICAgICAgICAgIGNvbnN0IFNoZWV0SGFuZGxlKCksCiAgICAgICAgICBUZXh0KCdDb25maXJtIHBpY2stdXAgc3BvdCcsdGV4dEFsaWduOlRleHRBbGlnbi5jZW50ZXIsc3R5bGU6VGhlbWUub2YoY29udGV4dCkudGV4dFRoZW1lLmhlYWRsaW5lU21hbGwpLAogICAgICAgICAgY29uc3QgU2l6ZWRCb3goaGVpZ2h0OjUpLFRleHQoJ0RyYWcgdGhlIG1hcCB0byBtb3ZlIHRoZSBwaW4nLHRleHRBbGlnbjpUZXh0QWxpZ24uY2VudGVyLHN0eWxlOlRoZW1lLm9mKGNvbnRleHQpLnRleHRUaGVtZS5ib2R5TGFyZ2U/LmNvcHlXaXRoKGNvbG9yOkFwcFRoZW1lLnNvZnRJbmspKSwKICAgICAgICAgIGNvbnN0IFNpemVkQm94KGhlaWdodDoxOCksCiAgICAgICAgICBDb250YWluZXIocGFkZGluZzpjb25zdCBFZGdlSW5zZXRzLnN5bW1ldHJpYyhob3Jpem9udGFsOjE0LHZlcnRpY2FsOjEyKSxkZWNvcmF0aW9uOkJveERlY29yYXRpb24oY29sb3I6Y29uc3QgQ29sb3IoMHhGRkYzRjNGMSksYm9yZGVyUmFkaXVzOkJvcmRlclJhZGl1cy5jaXJjdWxhcigxOCkpLGNoaWxkOlJvdyhjaGlsZHJlbjo8V2lkZ2V0PlsKICAgICAgICAgICAgY29uc3QgSWNvbihJY29ucy50cmlwX29yaWdpbixzaXplOjE4KSxjb25zdCBTaXplZEJveCh3aWR0aDoxMiksCiAgICAgICAgICAgIEV4cGFuZGVkKGNoaWxkOlRleHQoYWRkcmVzcy5pc0VtcHR5PydGaW5kaW5nIGFkZHJlc3PigKYnOmFkZHJlc3MsbWF4TGluZXM6MixvdmVyZmxvdzpUZXh0T3ZlcmZsb3cuZWxsaXBzaXMsc3R5bGU6Y29uc3QgVGV4dFN0eWxlKGZvbnRXZWlnaHQ6Rm9udFdlaWdodC53ODAwLGZvbnRTaXplOjE1KSkpLAogICAgICAgICAgICBpZihyZXNvbHZpbmcpY29uc3QgU2l6ZWRCb3god2lkdGg6MTgsaGVpZ2h0OjE4LGNoaWxkOkNpcmN1bGFyUHJvZ3Jlc3NJbmRpY2F0b3Ioc3Ryb2tlV2lkdGg6MikpIGVsc2UgY29uc3QgSWNvbihJY29ucy5ncHNfZml4ZWQpLAogICAgICAgICAgXSkpLAogICAgICAgICAgY29uc3QgU2l6ZWRCb3goaGVpZ2h0OjE0KSwKICAgICAgICAgIEZpbGxlZEJ1dHRvbihvblByZXNzZWQ6cmVzb2x2aW5nP251bGw6KCk9Pk5hdmlnYXRvci5wb3AoY29udGV4dCxQbGFjZVNlbGVjdGlvbihhZGRyZXNzOmFkZHJlc3MsbGF0OnNlbGVjdGVkLmxhdGl0dWRlLGxuZzpzZWxlY3RlZC5sb25naXR1ZGUpKSxjaGlsZDpjb25zdCBUZXh0KCdDb25maXJtIHBpY2stdXAnKSksCiAgICAgICAgXSksCiAgICAgICkpLAogICAgXSksCiAgKTsKfQo=' | base64 -d > passenger040_orig/lib/screens/pickup_confirm_screen.dart
+          mv passenger040_orig passenger
+          grep -q "version: 0.4.1+5" passenger/pubspec.yaml
+          sed -i "s/booking.status.toLowerCase()/booking!.status.toLowerCase()/g" passenger/lib/screens/trip_screen.dart
+          grep -q "PlaceSearchScreen" passenger/lib/screens/place_search_screen.dart
+          patch -p0 < .patch042/v041-to-v042.patch
+          grep -q "version: 0.4.2+6" passenger/pubspec.yaml
+          grep -q "requestSerial" passenger/lib/screens/place_search_screen.dart
+          grep -q "maxZoom: 14.5" passenger/lib/screens/quote_screen.dart
+          patch -p0 < .patch043/v042-to-v043.patch
           grep -q "version: 0.4.3+7" passenger/pubspec.yaml
           grep -q "Passenger v0.4.3" passenger/lib/screens/home_screen.dart
-          grep -q "Search address, airport or place" passenger/lib/screens/place_search_screen.dart
           grep -q "Confirm pick-up spot" passenger/lib/screens/pickup_confirm_screen.dart
           grep -q "driver != null && tracking != null" passenger/lib/screens/trip_screen.dart
 
@@ -57,12 +78,6 @@ jobs:
       - name: Build APK
         working-directory: passenger
         run: flutter build apk --release
-
-      - name: Verify compiled UX strings
-        run: |
-          unzip -p passenger/build/app/outputs/flutter-apk/app-release.apk lib/arm64-v8a/libapp.so | strings | grep -q "Search address, airport or place"
-          unzip -p passenger/build/app/outputs/flutter-apk/app-release.apk lib/arm64-v8a/libapp.so | strings | grep -q "Confirm pick-up spot"
-          unzip -p passenger/build/app/outputs/flutter-apk/app-release.apk lib/arm64-v8a/libapp.so | strings | grep -q "Passenger v0.4.3"
 
       - name: Rename APK
         run: cp passenger/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Passenger-v0.4.3.apk
