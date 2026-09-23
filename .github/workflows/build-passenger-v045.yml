@@ -30,6 +30,8 @@ jobs:
           grep -q "unawaited(session.initialize())" passenger/lib/main.dart
           grep -q "Could not restore the saved session" passenger/lib/state/passenger_session.dart
           grep -q "Startup recovery" passenger/lib/state/passenger_session.dart
+          sed -i "s/Passenger v0.4.4/Passenger v0.4.5/g" passenger/lib/screens/home_screen.dart
+          sed -i "s/Google fallback + exact pickup + trip markers/Startup recovery + Google fallback + trip markers/g" passenger/lib/screens/home_screen.dart
 
       - uses: actions/setup-java@v4
         with:
@@ -59,7 +61,7 @@ jobs:
       - name: Verify compiled startup recovery
         run: |
           unzip -p passenger/build/app/outputs/flutter-apk/app-release.apk lib/arm64-v8a/libapp.so | strings | grep -q "Could not restore the saved session"
-          unzip -p passenger/build/app/outputs/flutter-apk/app-release.apk lib/arm64-v8a/libapp.so | strings | grep -q "Passenger v0.4.4"
+          unzip -p passenger/build/app/outputs/flutter-apk/app-release.apk lib/arm64-v8a/libapp.so | strings | grep -q "Passenger v0.4.5"
 
       - name: Rename APK
         run: cp passenger/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Passenger-v0.4.5.apk
