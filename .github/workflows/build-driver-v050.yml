@@ -21,7 +21,7 @@ jobs:
 
       - name: Reconstruct Driver v0.5.0 source
         run: |
-          cat .driver050final/chunk-*.b64 | base64 -d > /tmp/gaotus-mobility-driver-v0.5.0.zip
+          { head -c 12000 .driver050final/chunk-00.b64; cat .driver050final/chunk-01.b64 .driver050final/chunk-02.b64 .driver050final/chunk-03.b64 .driver050final/chunk-04.b64 .driver050final/chunk-05.b64; } | base64 -d > /tmp/gaotus-mobility-driver-v0.5.0.zip
           echo "19b7e3c4726255421bc5837660d584d5ee80ad5dfa9d1532d7de74f2c49f3a25  /tmp/gaotus-mobility-driver-v0.5.0.zip" | sha256sum -c -
           unzip -t /tmp/gaotus-mobility-driver-v0.5.0.zip
           rm -rf driver /tmp/driver050
