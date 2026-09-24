@@ -1,4 +1,4 @@
-name: Build Driver v0.5.7 Nearby Jobs Recovery
+name: Build Driver v0.5.7 Nearby Jobs Board
 
 on:
   workflow_dispatch:
@@ -12,7 +12,6 @@ on:
       - '.driver055/**'
       - '.driver056/**'
       - '.driver057/**'
-      - '.driver057fix/**'
       - '.github/workflows/build-driver-v057.yml'
 
 permissions:
@@ -43,13 +42,16 @@ jobs:
           python3 .driver054/patch054.py
           python3 .driver055/patch055.py
           python3 .driver056/patch056.py
-          python3 .driver057fix/patch057.py
+          python3 .driver057/patch057.py
           grep -q "version: 0.5.7+12" driver/pubspec.yaml
           grep -q "pollDriverEvents" driver/lib/services/realtime_service.dart
           grep -q "liveSnapshot" driver/lib/state/app_session.dart
           grep -q "_wordpressHeartbeatTimer" driver/lib/state/app_session.dart
           grep -q "/driver/live-snapshot" driver/lib/core/api_client.dart
           grep -q "New passenger request nearby" driver/lib/services/offer_notification_service.dart
+          grep -q "AssetSource" driver/lib/services/offer_notification_service.dart
+          grep -q "NearbyJobsScreen" driver/lib/screens/driver_home_screen.dart
+          grep -q "Trip requests" driver/lib/screens/nearby_jobs_screen.dart
           grep -q "GPS live" driver/lib/screens/driver_home_screen.dart
           grep -q "PremiumCarMarker" driver/lib/screens/driver_home_screen.dart
           grep -q "class PremiumCarMarker" driver/lib/widgets/premium_car_marker.dart
@@ -57,9 +59,6 @@ jobs:
           grep -q "_finishLoginBootstrap" driver/lib/state/app_session.dart
           grep -q "authenticated = true;" driver/lib/state/app_session.dart
           grep -q "SIGNING IN" driver/lib/screens/login_screen.dart
-          grep -q "Nearby requests" driver/lib/screens/driver_requests_screen.dart
-          grep -q "gmp_trip_requests_v3" driver/lib/services/offer_notification_service.dart
-          grep -q "recentOffers" driver/lib/state/app_session.dart
 
       - uses: actions/setup-java@v4
         with:
@@ -81,7 +80,7 @@ jobs:
           from pathlib import Path
           p = Path("tool/bootstrap_platforms.sh")
           s = p.read_text()
-          s = s.replace("flutter analyze", "rm -rf test\nflutter analyze --no-fatal-infos --no-fatal-warnings")
+          s = s.replace("flutter analyze", "rm -rf test\nflutter analyze --no-fatal-infos")
           p.write_text(s)
           PY
           bash tool/bootstrap_platforms.sh
@@ -101,10 +100,10 @@ jobs:
         run: flutter build apk --release
 
       - name: Rename APK
-        run: cp driver/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Driver-v0.5.7-Nearby-Jobs-Recovery.apk
+        run: cp driver/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Driver-v0.5.7-Nearby-Jobs-Board.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Gaotus-Mobility-Driver-v0.5.7-Nearby-Jobs-Recovery-APK
-          path: Gaotus-Mobility-Driver-v0.5.7-Nearby-Jobs-Recovery.apk
+          name: Gaotus-Mobility-Driver-v0.5.7-Nearby-Jobs-Board-APK
+          path: Gaotus-Mobility-Driver-v0.5.6-Custom-Alert-Sound.apk
           if-no-files-found: error
