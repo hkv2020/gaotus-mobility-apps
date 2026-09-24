@@ -480,12 +480,13 @@ if 'Timer? _gpsWatchdogTimer;' not in s:
     s = s.replace('  Timer? _wordpressHeartbeatTimer;\n', '  Timer? _wordpressHeartbeatTimer;\n  Timer? _gpsWatchdogTimer;\n  DateTime? _lastGpsUpdateAt;\n', 1)
 if 'int chatAlertSequence = 0;' not in s:
     fields = "  int chatAlertSequence = 0;\n  int chatAlertBookingId = 0;\n  String chatAlertPreview = '';\n  int _lastChatAlertEventId = 0;\n"
-    if '  List<JobOffer> recentOffers=<JobOffer>[];\n' in s:
-        s = s.replace('  List<JobOffer> recentOffers=<JobOffer>[];\n', '  List<JobOffer> recentOffers=<JobOffer>[];\n' + fields, 1)
-    elif '  List<JobOffer> recentOffers = <JobOffer>[];\n' in s:
-        s = s.replace('  List<JobOffer> recentOffers = <JobOffer>[];\n', '  List<JobOffer> recentOffers = <JobOffer>[];\n' + fields, 1)
+    if '  List<JobOffer> offers = <JobOffer>[];\n' in s:
+        s = s.replace('  List<JobOffer> offers = <JobOffer>[];\n', '  List<JobOffer> offers = <JobOffer>[];\n' + fields, 1)
+    elif '  List<JobOffer> offers=<JobOffer>[];\n' in s:
+        s = s.replace('  List<JobOffer> offers=<JobOffer>[];\n', '  List<JobOffer> offers=<JobOffer>[];\n' + fields, 1)
     else:
-        raise SystemExit('recentOffers field marker missing')
+        raise SystemExit('offers field marker missing')
+
 
 old = r'''  Future<void> primeLocation() async {
     try {
