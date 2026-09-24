@@ -106,5 +106,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Gaotus-Mobility-Driver-v0.5.7-Nearby-Jobs-Recovery-APK
-          path: Gaotus-Mobility-Driver-v0.5.6-Custom-Alert-Sound.apk
+          path: Gaotus-Mobility-Driver-v0.5.7-Nearby-Jobs-Recovery.apk
           if-no-files-found: error
