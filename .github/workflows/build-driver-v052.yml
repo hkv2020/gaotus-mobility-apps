@@ -66,6 +66,16 @@ jobs:
           p.write_text(s)
           PY
           bash tool/bootstrap_platforms.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle.kts")
+          s = p.read_text()
+          if "isCoreLibraryDesugaringEnabled" not in s:
+              s = s.replace("compileOptions {", "compileOptions {\n        isCoreLibraryDesugaringEnabled = true", 1)
+          if "coreLibraryDesugaring(" not in s:
+              s += "\n\ndependencies {\n    coreLibraryDesugaring(\"com.android.tools:desugar_jdk_libs:2.1.4\")\n}\n"
+          p.write_text(s)
+          PY
 
       - name: Build APK
         working-directory: driver
