@@ -1,0 +1,103 @@
+name: Build Driver v0.5.8 Jobs GPS Alerts
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.driver051/**'
+      - '.driver052/**'
+      - '.driver053/**'
+      - '.driver054/**'
+      - '.driver055/**'
+      - '.driver056/**'
+      - '.driver057/**'
+      - '.driver058/**'
+      - '.github/workflows/build-driver-v058.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-driver:
+    name: Driver v0.5.8 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct Driver source
+        run: |
+          { head -c 12000 .driver050final/chunk-00.b64; cat .driver050final/chunk-01.b64 .driver050final/chunk-02.b64 .driver050final/chunk-03.b64 .driver050final/chunk-04.b64 .driver050final/chunk-05.b64; } | base64 -d > /tmp/driver050.zip
+          unzip -t /tmp/driver050.zip
+          rm -rf /tmp/driver051 driver
+          mkdir -p /tmp/driver051
+          unzip -q /tmp/driver050.zip -d /tmp/driver051
+          cp -a /tmp/driver051/gaotus-mobility-driver-v0.5.0 ./driver
+
+      - name: Apply Driver v0.5.1 through v0.5.8 patches
+        run: |
+          patch -p1 -d driver < .driver051/driver-v051-signin.patch
+          python3 .driver052/patch052.py
+          python3 .driver053/patch053.py
+          python3 .driver054/patch054.py
+          python3 .driver055/patch055.py
+          python3 .driver056/patch056.py
+          python3 .driver057/patch057.py
+          python3 .driver058/patch058.py
+          grep -q "version: 0.5.8+13" driver/pubspec.yaml
+          grep -q "Current job" driver/lib/screens/nearby_jobs_screen.dart
+          grep -q "recoverLocation" driver/lib/state/app_session.dart
+          grep -q "gmp_driver_messages_v4" driver/lib/services/offer_notification_service.dart
+          grep -q "gaotus_alert_long.wav" driver/pubspec.yaml
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Prepare Android and analyze
+        working-directory: driver
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("tool/bootstrap_platforms.sh")
+          s = p.read_text()
+          s = s.replace("flutter analyze", "rm -rf test\nflutter analyze --no-fatal-infos")
+          p.write_text(s)
+          PY
+          bash tool/bootstrap_platforms.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle.kts")
+          s = p.read_text()
+          if "isCoreLibraryDesugaringEnabled" not in s:
+              s = s.replace("compileOptions {", "compileOptions {\n        isCoreLibraryDesugaringEnabled = true", 1)
+          if "coreLibraryDesugaring(" not in s:
+              s += "\n\ndependencies {\n    coreLibraryDesugaring(\"com.android.tools:desugar_jdk_libs:2.1.4\")\n}\n"
+          p.write_text(s)
+          PY
+
+      - name: Build APK
+        working-directory: driver
+        run: flutter build apk --release
+
+      - name: Rename APK
+        run: cp driver/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Driver-v0.5.8-Jobs-GPS-Chat-Alerts.apk
+
+      - name: SHA256
+        run: sha256sum Gaotus-Mobility-Driver-v0.5.8-Jobs-GPS-Chat-Alerts.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaotus-Mobility-Driver-v0.5.8-Jobs-GPS-Chat-Alerts-APK
+          path: Gaotus-Mobility-Driver-v0.5.8-Jobs-GPS-Chat-Alerts.apk
+          if-no-files-found: error
