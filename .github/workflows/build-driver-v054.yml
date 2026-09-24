@@ -96,5 +96,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Gaotus-Mobility-Driver-v0.5.4-Premium-Car-Markers-APK
-          path: Gaotus-Mobility-Driver-v0.5.3-Dispatch-Self-Heal.apk
+          path: Gaotus-Mobility-Driver-v0.5.4-Premium-Car-Markers.apk
           if-no-files-found: error
