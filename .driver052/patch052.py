@@ -48,9 +48,9 @@ final class OfferNotificationService {
       visibility: NotificationVisibility.public,
     );
     const ios = DarwinNotificationDetails(presentAlert: true, presentBadge: true, presentSound: true);
-    final price = total > 0 ? ' · £\${total.toStringAsFixed(2)}' : '';
+    final price = total > 0 ? ' · £${total.toStringAsFixed(2)}' : '';
     final body = pickup.isNotEmpty
-        ? '\${pickup}\${dropoff.isNotEmpty ? ' → $dropoff' : ''}$price'
+        ? '${pickup}${dropoff.isNotEmpty ? ' → $dropoff' : ''}$price'
         : 'A passenger near you requested a ride$price';
     try {
       await _plugin.show(
@@ -420,9 +420,9 @@ class _DriverMapHomeState extends State<_DriverMapHome> {
       'EUR' => '€',
       'USD' => r'$',
       'RON' => 'RON ',
-      _ => '\${currency.toUpperCase()} ',
+      _ => '${currency.toUpperCase()} ',
     };
-    return '$symbol\${value.toStringAsFixed(2)}';
+    return '$symbol${value.toStringAsFixed(2)}';
   }
 }
 
