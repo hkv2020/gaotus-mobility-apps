@@ -196,7 +196,7 @@ checks={
  'lib/config/app_config.dart':["version = '0.5.7'"],
  'lib/core/api_client.dart':["offers({String status = 'offered'"],
  'lib/state/app_session.dart':['recentOffers','offer_history','_mergeOfferHistory'],
- 'lib/services/realtime_service.dart':['_watchdog','Duration(seconds: 35)','Duration(seconds: 3)'],
+ 'lib/services/realtime_service.dart':['_watchdog','Duration(seconds:35)','Duration(seconds: 3)'],
  'lib/services/offer_notification_service.dart':['AudioPlayer','gmp_trip_requests_v3'],
  'lib/screens/driver_home_screen.dart':['DriverRequestsScreen','label: \'Requests\''],
  'lib/screens/driver_requests_screen.dart':['Nearby requests','Recent requests'],
