@@ -88,6 +88,18 @@ new="""    if (_subscription != null) return;
 """
 if old not in s: raise SystemExit('location start marker missing')
 p.write_text(s.replace(old,new,1))
+p=root/'lib/services/location_service.dart'; s=p.read_text()
+marker='  Future<void> start({\n'
+if 'Future<Position> current()' not in s:
+    method="""  Future<Position> current() async {
+    await ensurePermission();
+    return Geolocator.getCurrentPosition(locationSettings: _settings()).timeout(const Duration(seconds: 12));
+  }
+
+"""
+    s=s.replace(marker,method+marker,1)
+    s=s.replace("final first = await Geolocator.getCurrentPosition(locationSettings: _settings()).timeout(const Duration(seconds: 12));","final first = await current();",1)
+p.write_text(s)
 
 p=root/'lib/services/realtime_service.dart'; s=p.read_text()
 s=s.replace("_reconnectTimer = Timer(const Duration(seconds: 30), _open);","_reconnectTimer = Timer(const Duration(seconds: 6), _open);",1)
@@ -272,9 +284,37 @@ s=s.replace(old_event,new_event,1)
 s=s.replace("      _fallbackPollTimer?.cancel();\n      _fallbackPollTimer = null;\n      _reconcileTimer?.cancel();","      _fallbackPollTimer?.cancel();\n      _fallbackPollTimer = null;\n      _eventPollTimer?.cancel();\n      _eventPollTimer = null;\n      _reconcileTimer?.cancel();",1)
 s=s.replace("      _pendingPosition = null;\n      await _store.clearSession();","      _pendingPosition = null;\n      _lastRealtimeEventId = 0;\n      _seenOfferIds.clear();\n      await _store.clearSession();",1)
 s=s.replace("    _fallbackPollTimer?.cancel();\n    _reconcileTimer?.cancel();","    _fallbackPollTimer?.cancel();\n    _eventPollTimer?.cancel();\n    _reconcileTimer?.cancel();",1)
+marker='  Future<void> _startLocation() async {\n'
+if 'Future<void> primeLocation()' not in s:
+    method="""  Future<void> primeLocation() async {
+    try {
+      final position = await _location.current();
+      _lastPosition = position;
+      notifyListeners();
+    } catch (error) {
+      errorMessage = _message(error);
+      notifyListeners();
+    }
+  }
+
+"""
+    s=s.replace(marker,method+marker,1)
 p.write_text(s)
 
 p=root/'lib/screens/driver_home_screen.dart'; s=p.read_text()
+old_home_init="""    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _sessionChanged();
+      unawaited(widget.session.loadEarnings('today', silent: true));
+    });
+"""
+new_home_init="""    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _sessionChanged();
+      unawaited(widget.session.primeLocation());
+      unawaited(widget.session.loadEarnings('today', silent: true));
+    });
+"""
+if old_home_init not in s: raise SystemExit('driver home init marker missing')
+s=s.replace(old_home_init,new_home_init,1)
 s=s.replace("        isDismissible: false,\n        enableDrag: false,","        isDismissible: true,\n        enableDrag: true,",1)
 s=s.replace("        builder: (modalContext) => _OfferSheet(\n          offer: offer,","        builder: (modalContext) => _OfferSheet(\n          session: widget.session,\n          offer: offer,",1)
 
@@ -495,7 +535,7 @@ p.write_text(s)
 
 checks={
   'pubspec.yaml':['version: 0.5.2+7','flutter_local_notifications'],
-  'lib/state/app_session.dart':['pollDriverEvents','_pollOperationalSafetyNet','_announceOffer','Duration(seconds: 3)'],
+  'lib/state/app_session.dart':['pollDriverEvents','_pollOperationalSafetyNet','_announceOffer','Duration(seconds: 3)','primeLocation'],
   'lib/screens/driver_home_screen.dart':['GPS live','_OfferSheetState','isDismissible: true'],
   'lib/services/realtime_service.dart':['Duration(seconds: 6)','pollDriverEvents'],
   'lib/services/offer_notification_service.dart':['New passenger request nearby'],
