@@ -58,7 +58,6 @@
        if (user['type']?.toString() != 'driver') {
          throw const ApiException('This account is not linked to a driver profile.');
 @@ -142,19 +151,37 @@
-       if (!rawToken.startsWith('gmp_')) {
          throw const ApiException('Server did not return a valid driver token.');
        }
  
@@ -102,19 +101,20 @@
        if (!authenticated && _api != null) {
          _api?.close();
          _api = null;
-@@ -164,10 +191,50 @@
+@@ -164,11 +191,54 @@
        rethrow;
      } finally {
        api.close();
 -      busy = false;
+-      notifyListeners();
 +      if (!authenticated) {
 +        busy = false;
 +        loginStage = null;
 +        notifyListeners();
 +      }
-+    }
-+  }
-+
+     }
+   }
+ 
 +  Future<void> _finishLoginBootstrap() async {
 +    final api = _api;
 +    if (api == null || !authenticated) return;
@@ -155,41 +155,12 @@
 +    notifyListeners();
 +  }
 +
-+  Future<void> _discoverRealtime() async {
-+    final api = _api;
-+    if (api == null) return;
-+    try {
-+      final health = await api.health();
-+      final discovered = health['realtime_server_url']?.toString().trim();
-+      if (discovered != null && discovered.isNotEmpty) {
-+        realtimeUrl = discovered;
-+        await _store.writeRealtimeUrl(discovered);
-+      }
-+    } catch (_) {
-+      // Realtime is optional; WordPress REST remains the fallback transport.
-+    }
-+  }
--      notifyListeners();
--    }
--  }
--
--  Future<void> _discoverRealtime() async {
--    final api = _api;
--    if (api == null) return;
--    try {
--      final health = await api.health();
--      final discovered = health['realtime_server_url']?.toString().trim();
--      if (discovered != null && discovered.isNotEmpty) {
--        realtimeUrl = discovered;
--        await _store.writeRealtimeUrl(discovered);
--      }
--    } catch (_) {
--      // Realtime is optional; WordPress REST remains the fallback transport.
--    }
--  }
+   Future<void> _discoverRealtime() async {
+     final api = _api;
+     if (api == null) return;
 --- a/lib/screens/login_screen.dart
 +++ b/lib/screens/login_screen.dart
-@@ -144,10 +144,21 @@
+@@ -145,11 +145,21 @@
                                child: CircularProgressIndicator(strokeWidth: 2),
                              )
                            : const Icon(Icons.login),
