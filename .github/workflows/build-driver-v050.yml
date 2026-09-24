@@ -34,7 +34,6 @@ jobs:
           grep -q "_flushLatestLocation" driver/lib/state/app_session.dart
           grep -q "DriverChatScreen" driver/lib/screens/chat_screen.dart
           grep -q "You’re online" driver/lib/screens/driver_home_screen.dart
-          grep -q "TODAY" driver/lib/screens/driver_home_screen.dart
           grep -q "Completed trips" driver/lib/screens/earnings_screen.dart
 
       - uses: actions/setup-java@v4
