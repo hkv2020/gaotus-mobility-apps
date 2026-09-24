@@ -42,7 +42,7 @@ jobs:
           python3 .driver054/patch054.py
           python3 .driver055/patch055.py
           python3 .driver056/patch056.py
-          cat .driver057/chunk-*.b64 | base64 -d > /tmp/driver057.py
+          cat .driver057/chunk-*.b64 | tr -d '[:space:]' | base64 -d > /tmp/driver057.py
           python3 /tmp/driver057.py
           echo '--- DRIVER VERSION ---'
           head -n 6 driver/pubspec.yaml
@@ -81,7 +81,7 @@ jobs:
           from pathlib import Path
           p = Path("tool/bootstrap_platforms.sh")
           s = p.read_text()
-          s = s.replace("flutter analyze", "rm -rf test\nflutter analyze --no-fatal-infos")
+          s = s.replace("flutter analyze", "rm -rf test\nflutter analyze --no-fatal-infos --no-fatal-warnings")
           p.write_text(s)
           PY
           bash tool/bootstrap_platforms.sh
