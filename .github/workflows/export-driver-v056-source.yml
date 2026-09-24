@@ -11,7 +11,7 @@ on:
       - '.driver054/**'
       - '.driver055/**'
       - '.driver056/**'
-      - '.github/workflows/build-driver-v056.yml'
+      - '.github/workflows/export-driver-v056-source.yml'
 
 permissions:
   contents: read
