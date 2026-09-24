@@ -362,6 +362,12 @@ s=s.replace(old,new,1)
 
 s=s.replace('      _reconcileTimer?.cancel();\n      _reconcileTimer = null;\n','      _reconcileTimer?.cancel();\n      _reconcileTimer = null;\n      _wordpressHeartbeatTimer?.cancel();\n      _wordpressHeartbeatTimer = null;\n',1)
 s=s.replace('    _reconcileTimer?.cancel();\n    _locationRetryTimer?.cancel();','    _reconcileTimer?.cancel();\n    _wordpressHeartbeatTimer?.cancel();\n    _locationRetryTimer?.cancel();',1)
+# _loadAll is no longer used after switching to the single live-snapshot endpoint.
+start=s.find('  Future<void> _loadAll(ApiClient api) async {')
+if start>=0:
+    end=s.find('\n  Future<void> refreshAll(',start)
+    if end<0: raise SystemExit('refreshAll marker missing after _loadAll')
+    s=s[:start]+s[end:]
 p.write_text(s)
 
 checks={
