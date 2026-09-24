@@ -15,7 +15,7 @@ replace_one('lib/config/app_config.dart',"static const version = '0.5.3';","stat
 p=root/'lib/state/passenger_session.dart'
 s=p.read_text()
 if 'bool _nearbyInFlight=false;' not in s:
-    s=s.replace('  DateTime? _lastNearbyWordPress;\n','  DateTime? _lastNearbyWordPress;\n  bool _nearbyInFlight=false;\n',1)
+    s=s.replace('  DateTime? _lastNearbyWordPress;\n','  bool _nearbyInFlight=false;\n',1)
 
 start=s.index('  Future<void> refreshNearby(double lat,double lng,{double radiusKm=8,int limit=12}) async {')
 end=s.index('\n  Future<List<ChatMessage>>',start)
@@ -46,7 +46,6 @@ new=r'''  Future<void> refreshNearby(double lat,double lng,{double radiusKm=8,in
       final sources=await Future.wait<Map<String,dynamic>?>(<Future<Map<String,dynamic>?>>[liveFuture,wpFuture]);
       addCars(sources[0]?['cars']);
       addCars(sources[1]?['cars']);
-      _lastNearbyWordPress=DateTime.now();
       nearbyCars=merged.take(limit).toList();
       notifyListeners();
     }finally{
