@@ -37,7 +37,7 @@ jobs:
           grep -q "pollDriverEvents" driver/lib/services/realtime_service.dart
           grep -q "New passenger request nearby" driver/lib/services/offer_notification_service.dart
           grep -q "GPS live" driver/lib/screens/driver_home_screen.dart
-          grep -q "static const String version = '0.5.1';" driver/lib/config/app_config.dart
+          grep -q "static const String version = '0.5.2';" driver/lib/config/app_config.dart
           grep -q "_finishLoginBootstrap" driver/lib/state/app_session.dart
           grep -q "authenticated = true;" driver/lib/state/app_session.dart
           grep -q "SIGNING IN" driver/lib/screens/login_screen.dart
