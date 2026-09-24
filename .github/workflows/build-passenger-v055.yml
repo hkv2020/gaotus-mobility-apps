@@ -121,5 +121,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Gaotus-Mobility-Passenger-v0.5.5-Premium-Car-Markers-APK
-          path: Gaotus-Mobility-Passenger-v0.5.4.apk
+          path: Gaotus-Mobility-Passenger-v0.5.5-Premium-Car-Markers.apk
           if-no-files-found: error
