@@ -139,5 +139,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Gaotus-Mobility-Passenger-v0.5.6-Assigned-Car-Sync-Sound-APK
-          path: Gaotus-Mobility-Passenger-v0.5.5-Premium-Car-Markers.apk
+          path: Gaotus-Mobility-Passenger-v0.5.6-Assigned-Car-Sync-Sound.apk
           if-no-files-found: error
