@@ -1,4 +1,4 @@
-name: Build Passenger v0.5.6 Ride Sync + Small Cars
+name: Build Passenger v0.5.6 Assigned Car Sync Sound
 
 on:
   workflow_dispatch:
@@ -79,9 +79,10 @@ jobs:
           grep -q "_NearbyCarMarker" passenger/lib/screens/home_screen.dart
           grep -q "PremiumCarMarker" passenger/lib/screens/home_screen.dart
           grep -q "class PremiumCarMarker" passenger/lib/widgets/premium_car_marker.dart
+          grep -q "criticalPoll=Timer.periodic" passenger/lib/screens/trip_screen.dart
           grep -q "_bookingRefreshInFlight" passenger/lib/state/passenger_session.dart
-          grep -q "Duration(seconds:1)" passenger/lib/state/passenger_session.dart
-          grep -q "heading: tracking?.heading ?? 0" passenger/lib/screens/trip_screen.dart
+          grep -q "RawResourceAndroidNotificationSound" passenger/lib/services/passenger_notification_service.dart
+          test -s passenger/assets/audio/gaotus_alert.mp3
           grep -q "pollNearby" passenger/lib/services/realtime_service.dart
           grep -q "recommendedVehicles" passenger/lib/screens/quote_screen.dart
           grep -q "More options" passenger/lib/screens/quote_screen.dart
@@ -121,10 +122,10 @@ jobs:
         run: flutter build apk --release
 
       - name: Rename APK
-        run: cp passenger/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Passenger-v0.5.6-Ride-Sync-Small-Cars.apk
+        run: cp passenger/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Passenger-v0.5.6-Assigned-Car-Sync-Sound.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Gaotus-Mobility-Passenger-v0.5.6-Ride-Sync-Small-Cars-APK
-          path: Gaotus-Mobility-Passenger-v0.5.6-Ride-Sync-Small-Cars.apk
+          name: Gaotus-Mobility-Passenger-v0.5.6-Assigned-Car-Sync-Sound-APK
+          path: Gaotus-Mobility-Passenger-v0.5.5-Premium-Car-Markers.apk
           if-no-files-found: error
