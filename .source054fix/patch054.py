@@ -36,19 +36,17 @@ new=r'''  Future<void> refreshNearby(double lat,double lng,{double radiusKm=8,in
         }
       }
 
-      if(realtimeUrl!=null&&realtimeUrl!.isNotEmpty){
-        final live=await _realtime.pollNearby(lat,lng,radiusKm:radiusKm,limit:limit);
-        addCars(live?['cars']);
-      }
-
-      final now=DateTime.now();
-      if(_lastNearbyWordPress==null||now.difference(_lastNearbyWordPress!)>=const Duration(seconds:3)){
-        _lastNearbyWordPress=now;
-        try{
-          final wp=await _api!.nearbyDrivers(lat,lng,radiusKm:radiusKm,limit:limit).timeout(const Duration(seconds:6));
-          addCars(wp['cars']);
-        }catch(_){}
-      }
+      final liveFuture=(realtimeUrl!=null&&realtimeUrl!.isNotEmpty)
+          ? _realtime.pollNearby(lat,lng,radiusKm:radiusKm,limit:limit)
+          : Future<Map<String,dynamic>?>.value(null);
+      final wpFuture=_api!.nearbyDrivers(lat,lng,radiusKm:radiusKm,limit:limit)
+          .timeout(const Duration(seconds:4))
+          .then<Map<String,dynamic>?>((value)=>value)
+          .catchError((_)=><String,dynamic>{});
+      final sources=await Future.wait<Map<String,dynamic>?>(<Future<Map<String,dynamic>?>>[liveFuture,wpFuture]);
+      addCars(sources[0]?['cars']);
+      addCars(sources[1]?['cars']);
+      _lastNearbyWordPress=DateTime.now();
       nearbyCars=merged.take(limit).toList();
       notifyListeners();
     }finally{
