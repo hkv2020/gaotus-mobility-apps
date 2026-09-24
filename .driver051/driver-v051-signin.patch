@@ -1,0 +1,216 @@
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -1,7 +1,7 @@
+ name: gaotus_mobility_driver
+ description: Driver application for Gaotus Mobility Platform.
+ publish_to: "none"
+-version: 0.5.0+5
++version: 0.5.1+6
+ 
+ environment:
+   sdk: ">=3.8.0 <4.0.0"
+--- a/lib/config/app_config.dart
++++ b/lib/config/app_config.dart
+@@ -1,6 +1,6 @@
+ final class AppConfig {
+   static const String appName = 'Gaotus Mobility Driver';
+-  static const String version = '0.5.0';
++  static const String version = '0.5.1';
+   static const String namespace = '/wp-json/gaotus-mobility/v1';
+   static const String defaultServer = String.fromEnvironment(
+     'GMP_API_BASE',
+--- a/lib/state/app_session.dart
++++ b/lib/state/app_session.dart
+@@ -43,6 +43,7 @@
+   bool pushRegistered = false;
+   bool pushServerConfigured = false;
+   String? errorMessage;
++  String? loginStage;
+   String serverUrl = AppConfig.defaultServer;
+   String? token;
+   String? realtimeUrl;
+@@ -125,14 +126,22 @@
+     if (normalized.isEmpty) throw const ApiException('Enter the WordPress site URL.');
+     busy = true;
+     errorMessage = null;
++    loginStage = 'Contacting server…';
+     notifyListeners();
+     final api = ApiClient(siteUrl: normalized);
+     try {
+-      final result = await api.login(
+-        login: login.trim(),
+-        password: password,
+-        deviceId: await _store.readOrCreateDeviceId(),
+-      );
++      final result = await api
++          .login(
++            login: login.trim(),
++            password: password,
++            deviceId: await _store.readOrCreateDeviceId(),
++          )
++          .timeout(
++            const Duration(seconds: 25),
++            onTimeout: () => throw const ApiException(
++              'Sign-in timed out. Check the server URL and internet connection, then try again.',
++            ),
++          );
+       final user = mapValue(result['user']);
+       if (user['type']?.toString() != 'driver') {
+         throw const ApiException('This account is not linked to a driver profile.');
+@@ -142,19 +151,37 @@
+       if (!rawToken.startsWith('gmp_')) {
+         throw const ApiException('Server did not return a valid driver token.');
+       }
+ 
++      loginStage = 'Opening driver session…';
++      notifyListeners();
++
+       serverUrl = normalized;
+       token = rawToken;
++      driverId = intValue(user['driver_id']);
++      driverName = (user['driver_name'] ?? user['display_name'] ?? '').toString();
+       _api?.close();
+       _api = ApiClient(siteUrl: serverUrl, token: token);
+-      await _store.writeSession(server: serverUrl, token: rawToken);
+-      await _loadAll(_api!);
++
++      // Authentication is complete as soon as the server-issued driver token is
++      // validated. Do not keep the sign-in button spinning while optional
++      // profile/realtime/push/GPS bootstrap work runs afterwards.
++      try {
++        await _store
++            .writeSession(server: serverUrl, token: rawToken)
++            .timeout(const Duration(seconds: 5));
++      } catch (_) {
++        // Keep the current authenticated session usable. A failed secure-store
++        // write only means the driver may need to sign in again after restart.
++      }
++
+       authenticated = true;
+-      await _discoverRealtime();
+-      await _registerPushIfPossible();
+-      await _startRuntimeServices();
+-      unawaited(loadEarnings('today', silent: true));
++      busy = false;
++      loginStage = null;
++      notifyListeners();
++
++      unawaited(_finishLoginBootstrap());
+     } catch (error) {
+       errorMessage = _message(error);
++      loginStage = null;
+       if (!authenticated && _api != null) {
+         _api?.close();
+         _api = null;
+@@ -164,10 +191,50 @@
+       rethrow;
+     } finally {
+       api.close();
+-      busy = false;
++      if (!authenticated) {
++        busy = false;
++        loginStage = null;
++        notifyListeners();
++      }
++    }
++  }
++
++  Future<void> _finishLoginBootstrap() async {
++    final api = _api;
++    if (api == null || !authenticated) return;
++
++    try {
++      await _loadAll(api).timeout(const Duration(seconds: 22));
++    } on ApiException catch (error) {
++      if (error.statusCode == 401 || error.statusCode == 403) {
++        await logout(localOnly: true);
++        return;
++      }
++      // Core sign-in is already valid. Keep the app open and let periodic
++      // reconciliation retry operational data instead of bouncing to login.
++      errorMessage = 'Signed in. Driver data sync is retrying: ${error.message}';
++    } catch (error) {
++      errorMessage = 'Signed in. Driver data sync is retrying: ${_message(error)}';
++    }
++    notifyListeners();
++    if (!authenticated) return;
++
++    unawaited(loadEarnings('today', silent: true));
++
++    try {
++      await _discoverRealtime().timeout(const Duration(seconds: 7));
++    } catch (_) {}
++    if (!authenticated) return;
++
++    try {
++      await _registerPushIfPossible().timeout(const Duration(seconds: 8));
++    } catch (_) {}
++    if (!authenticated) return;
++
++    try {
++      await _startRuntimeServices().timeout(const Duration(seconds: 12));
++    } catch (_) {
++      // WordPress REST polling remains the operational fallback.
++    }
++    notifyListeners();
++  }
++
++  Future<void> _discoverRealtime() async {
++    final api = _api;
++    if (api == null) return;
++    try {
++      final health = await api.health();
++      final discovered = health['realtime_server_url']?.toString().trim();
++      if (discovered != null && discovered.isNotEmpty) {
++        realtimeUrl = discovered;
++        await _store.writeRealtimeUrl(discovered);
++      }
++    } catch (_) {
++      // Realtime is optional; WordPress REST remains the fallback transport.
++    }
++  }
+-      notifyListeners();
+-    }
+-  }
+-
+-  Future<void> _discoverRealtime() async {
+-    final api = _api;
+-    if (api == null) return;
+-    try {
+-      final health = await api.health();
+-      final discovered = health['realtime_server_url']?.toString().trim();
+-      if (discovered != null && discovered.isNotEmpty) {
+-        realtimeUrl = discovered;
+-        await _store.writeRealtimeUrl(discovered);
+-      }
+-    } catch (_) {
+-      // Realtime is optional; WordPress REST remains the fallback transport.
+-    }
+-  }
+--- a/lib/screens/login_screen.dart
++++ b/lib/screens/login_screen.dart
+@@ -144,10 +144,21 @@
+                               child: CircularProgressIndicator(strokeWidth: 2),
+                             )
+                           : const Icon(Icons.login),
+-                      label: const Padding(
+-                        padding: EdgeInsets.symmetric(vertical: 14),
+-                        child: Text('SIGN IN AS DRIVER'),
++                      label: Padding(
++                        padding: const EdgeInsets.symmetric(vertical: 14),
++                        child: Text(session.busy ? 'SIGNING IN…' : 'SIGN IN AS DRIVER'),
+                       ),
+                     ),
++                    if (session.busy && session.loginStage != null) ...<Widget>[
++                      const SizedBox(height: 12),
++                      Text(
++                        session.loginStage!,
++                        textAlign: TextAlign.center,
++                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
++                              color: Theme.of(context).colorScheme.onSurfaceVariant,
++                            ),
++                      ),
++                    ],
+                     if (session.errorMessage != null) ...<Widget>[
+                       const SizedBox(height: 16),
+                       Text(
