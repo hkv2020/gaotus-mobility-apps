@@ -144,5 +144,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Gaotus-Mobility-Passenger-v0.5.7-Atomic-Ride-Sync-APK
-          path: Gaotus-Mobility-Passenger-v0.5.6-Assigned-Car-Sync-Sound.apk
+          path: Gaotus-Mobility-Passenger-v0.5.7-Atomic-Ride-Sync.apk
           if-no-files-found: error
