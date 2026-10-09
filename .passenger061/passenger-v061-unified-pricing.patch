@@ -1,0 +1,325 @@
+diff -ruN '--exclude=.dart_tool' '--exclude=build' passenger060/lib/config/app_config.dart passenger061/lib/config/app_config.dart
+--- passenger060/lib/config/app_config.dart	2026-10-09 15:36:08.000000000 +0000
++++ passenger061/lib/config/app_config.dart	2026-10-09 17:28:52.093209050 +0000
+@@ -1,6 +1,6 @@
+ final class AppConfig {
+   static const appName = 'Gaotus Mobility';
+-  static const version = '0.6.0';
++  static const version = '0.6.1';
+   static const defaultServer = 'https://beaphoenix.eu';
+   static const namespace = '/wp-json/gaotus-mobility/v1';
+ 
+ diff -ruN '--exclude=.dart_tool' '--exclude=build' passenger060/lib/core/api_client.dart passenger061/lib/core/api_client.dart
+--- passenger060/lib/core/api_client.dart	2026-10-09 15:36:08.000000000 +0000
++++ passenger061/lib/core/api_client.dart	2026-10-09 17:28:52.093267579 +0000
+@@ -57,6 +57,7 @@
+   Future<Map<String,dynamic>> placeDetails(String placeId,{String sessionToken=''}) => request('POST','/customer/maps/place',body:{'place_id':placeId,'session_token':sessionToken});
+   Future<Map<String,dynamic>> reverseGeocode(double lat,double lng) => request('POST','/customer/maps/reverse',body:{'lat':lat,'lng':lng});
+   Future<Map<String,dynamic>> createBooking(Map<String,Object?> body) => request('POST','/customer/bookings',body:body);
++  Future<Map<String,dynamic>> deliveryQuote(Map<String,Object?> body) => request('POST','/customer/delivery-quote',body:body);
+   Future<Map<String,dynamic>> createDelivery(Map<String,Object?> body) => request('POST','/customer/deliveries',body:body);
+   Future<Map<String,dynamic>> payment(int id) => request('POST','/customer/booking/$id/payment');
+   Future<Map<String,dynamic>> cancel(int id) => request('POST','/customer/booking/$id/cancel');
+ diff -ruN '--exclude=.dart_tool' '--exclude=build' passenger060/lib/core/localization.dart passenger061/lib/core/localization.dart
+--- passenger060/lib/core/localization.dart	2026-10-09 15:36:08.000000000 +0000
++++ passenger061/lib/core/localization.dart	2026-10-09 17:28:52.093548623 +0000
+@@ -198,6 +198,18 @@
+     "Your ride has been cancelled.": "Cursa a fost anulată.",
+     "Your delivery status has changed.": "Statusul livrării s-a schimbat.",
+     "Your ride status has changed.": "Statusul cursei s-a schimbat.",
++    "Get delivery price": "Calculează prețul livrării",
++    "Delivery price": "Preț livrare",
++    "Estimated distance": "Distanță estimată",
++    "Estimated time": "Timp estimat",
++    "Confirm delivery": "Confirmă livrarea",
++    "Price is calculated by the platform and rechecked when the delivery is created.": "Prețul este calculat de platformă și reverificat la crearea livrării.",
++    "Standard": "Standard",
++    "Urgent / same-day": "Urgent / în aceeași zi",
++    "Service": "Serviciu",
++    "Choose collection and delivery addresses.": "Alege adresele de ridicare și livrare.",
++    "Add recipient name and phone number.": "Adaugă numele și telefonul destinatarului.",
++    "The platform will charge": "Platforma va calcula",
+   };
+   static String t(String source) {
+     if (!isRomanian || source.isEmpty) return source;
+ diff -ruN '--exclude=.dart_tool' '--exclude=build' passenger060/lib/models/delivery_quote.dart passenger061/lib/models/delivery_quote.dart
+--- passenger060/lib/models/delivery_quote.dart	1970-01-01 00:00:00.000000000 +0000
++++ passenger061/lib/models/delivery_quote.dart	2026-10-09 17:28:51.607834815 +0000
+@@ -0,0 +1,30 @@
++import '../core/country_config.dart';
++
++final class DeliveryQuote {
++  const DeliveryQuote({
++    required this.price,
++    required this.distance,
++    required this.distanceUnit,
++    required this.durationMinutes,
++    this.priceFormatted = '',
++    this.breakdown = const <String, dynamic>{},
++  });
++
++  final double price;
++  final String priceFormatted;
++  final double distance;
++  final String distanceUnit;
++  final double durationMinutes;
++  final Map<String, dynamic> breakdown;
++
++  String get priceLabel => priceFormatted.isNotEmpty ? priceFormatted : CountryConfig.money(price);
++
++  factory DeliveryQuote.fromJson(Map<String, dynamic> j) => DeliveryQuote(
++        price: (j['price'] as num?)?.toDouble() ?? double.tryParse('${j['price']}') ?? 0,
++        priceFormatted: (j['price_formatted'] ?? '').toString(),
++        distance: (j['distance'] as num?)?.toDouble() ?? double.tryParse('${j['distance']}') ?? 0,
++        distanceUnit: (j['distance_unit'] ?? (CountryConfig.units == 'imperial' ? 'mi' : 'km')).toString(),
++        durationMinutes: (j['duration_minutes'] as num?)?.toDouble() ?? double.tryParse('${j['duration_minutes']}') ?? 0,
++        breakdown: j['breakdown'] is Map ? Map<String, dynamic>.from(j['breakdown'] as Map) : <String, dynamic>{},
++      );
++}
+ diff -ruN '--exclude=.dart_tool' '--exclude=build' passenger060/lib/screens/send_parcel_screen.dart passenger061/lib/screens/send_parcel_screen.dart
+--- passenger060/lib/screens/send_parcel_screen.dart	2026-10-09 15:36:08.000000000 +0000
++++ passenger061/lib/screens/send_parcel_screen.dart	2026-10-09 17:29:21.372150256 +0000
+@@ -1,6 +1,7 @@
+ import 'package:flutter/material.dart';
+ 
+ import '../models/place_selection.dart';
++import '../models/delivery_quote.dart';
+ import '../state/passenger_session.dart';
+ import '../theme/app_theme.dart';
+ import 'delivery_screen.dart';
+@@ -26,6 +27,9 @@
+   final notes = TextEditingController();
+   int packageCount = 1;
+   String packageSize = 'Medium';
++  String serviceLevel = 'standard';
++  DeliveryQuote? deliveryQuote;
++  bool quoteLoading = false;
+   bool locationLoading = true;
+ 
+   @override
+@@ -77,26 +81,21 @@
+     if (d == null || !mounted) return;
+     final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(pickupAt));
+     if (t == null) return;
+-    setState(() => pickupAt = DateTime(d.year, d.month, d.day, t.hour, t.minute));
++    setState(() { pickupAt = DateTime(d.year, d.month, d.day, t.hour, t.minute); deliveryQuote = null; });
+   }
+ 
+-  Future<void> _submit() async {
+-    if (pickup == null || destination == null) {
+-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Choose collection and delivery addresses.')));
+-      return;
+-    }
+-    if (recipientName.text.trim().isEmpty || recipientPhone.text.trim().isEmpty) {
+-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add recipient name and phone number.')));
+-      return;
+-    }
++  Map<String, Object?>? _buildBody({bool requireRecipient = true}) {
++    if (pickup == null || destination == null) return null;
++    if (requireRecipient && (recipientName.text.trim().isEmpty || recipientPhone.text.trim().isEmpty)) return null;
+     String pad(int v) => v.toString().padLeft(2, '0');
+     final identity = widget.session.identity ?? const <String, dynamic>{};
+     final senderName = (identity['name'] ?? identity['display_name'] ?? '').toString();
+     final senderPhone = (identity['phone'] ?? '').toString();
+     final parcelRef = reference.text.trim().isEmpty ? 'GMP-${DateTime.now().millisecondsSinceEpoch}' : reference.text.trim();
+     final packageWeight = double.tryParse(weight.text.trim().replaceAll(',', '.')) ?? 0;
+-    final body = <String, Object?>{
++    return <String, Object?>{
+       'job_type': 'delivery',
++      'service_level': serviceLevel,
+       'pickup_date': '${pickupAt.year}-${pad(pickupAt.month)}-${pad(pickupAt.day)}',
+       'pickup_time': '${pad(pickupAt.hour)}:${pad(pickupAt.minute)}',
+       'payment_method': 'account',
+@@ -134,6 +133,63 @@
+         },
+       ],
+     };
++  }
++
++  void _invalidateQuote() {
++    if (deliveryQuote != null && mounted) setState(() => deliveryQuote = null);
++  }
++
++  Future<DeliveryQuote?> _getQuote() async {
++    if (pickup == null || destination == null) {
++      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Choose collection and delivery addresses.'.tr)));
++      return null;
++    }
++    final body = _buildBody(requireRecipient: false);
++    if (body == null) return null;
++    setState(() => quoteLoading = true);
++    try {
++      final quote = await widget.session.deliveryQuote(body);
++      if (mounted) setState(() => deliveryQuote = quote);
++      return quote;
++    } catch (error) {
++      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
++      return null;
++    } finally {
++      if (mounted) setState(() => quoteLoading = false);
++    }
++  }
++
++  Future<void> _submit() async {
++    if (pickup == null || destination == null) {
++      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Choose collection and delivery addresses.'.tr)));
++      return;
++    }
++    if (recipientName.text.trim().isEmpty || recipientPhone.text.trim().isEmpty) {
++      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Add recipient name and phone number.'.tr)));
++      return;
++    }
++    final quote = deliveryQuote ?? await _getQuote();
++    if (quote == null || !mounted) return;
++    final confirmed = await showDialog<bool>(
++      context: context,
++      builder: (context) => AlertDialog(
++        title: Text('Confirm delivery'.tr),
++        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
++          Text('${'Delivery price'.tr}: ${quote.priceLabel}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
++          const SizedBox(height: 8),
++          Text('${quote.distance.toStringAsFixed(1)} ${quote.distanceUnit} · ${quote.durationMinutes.toStringAsFixed(0)} min'),
++          const SizedBox(height: 8),
++          Text('Price is calculated by the platform and rechecked when the delivery is created.'.tr),
++        ]),
++        actions: <Widget>[
++          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Cancel'.tr)),
++          FilledButton(onPressed: () => Navigator.pop(context, true), child: Text('Confirm delivery'.tr)),
++        ],
++      ),
++    );
++    if (confirmed != true || !mounted) return;
++    final body = _buildBody();
++    if (body == null) return;
+     try {
+       final job = await widget.session.createDelivery(body);
+       if (!mounted) return;
+@@ -162,7 +218,7 @@
+                 value: locationLoading ? 'Finding your location…' : (pickup?.address ?? 'Choose collection address'),
+                 onTap: () async {
+                   final value = await _choose('Collection address', bias: pickup);
+-                  if (value != null && mounted) setState(() => pickup = value);
++                  if (value != null && mounted) setState(() { pickup = value; deliveryQuote = null; });
+                 },
+               ),
+               const SizedBox(height: 10),
+@@ -172,7 +228,7 @@
+                 value: destination?.address ?? 'Choose delivery address',
+                 onTap: () async {
+                   final value = await _choose('Delivery address', bias: pickup);
+-                  if (value != null && mounted) setState(() => destination = value);
++                  if (value != null && mounted) setState(() { destination = value; deliveryQuote = null; });
+                 },
+               ),
+               const SizedBox(height: 18),
+@@ -192,11 +248,11 @@
+                     value: packageSize,
+                     decoration: const InputDecoration(labelText: 'Size'),
+                     items: const <String>['Small', 'Medium', 'Large', 'XL'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+-                    onChanged: (v) => setState(() => packageSize = v ?? packageSize),
++                    onChanged: (v) => setState(() { packageSize = v ?? packageSize; deliveryQuote = null; }),
+                   ),
+                 ),
+                 const SizedBox(width: 10),
+-                Expanded(child: TextField(controller: weight, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Weight kg'))),
++                Expanded(child: TextField(controller: weight, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => _invalidateQuote(), decoration: const InputDecoration(labelText: 'Weight kg'))),
+               ]),
+               const SizedBox(height: 10),
+               Row(children: <Widget>[
+@@ -208,20 +264,54 @@
+                   decoration: BoxDecoration(border: Border.all(color: const Color(0xFFDFDFDC)), borderRadius: BorderRadius.circular(18)),
+                   child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
+-                    IconButton(onPressed: packageCount <= 1 ? null : () => setState(() => packageCount--), icon: const Icon(Icons.remove_rounded)),
++                    IconButton(onPressed: packageCount <= 1 ? null : () => setState(() { packageCount--; deliveryQuote = null; }), icon: const Icon(Icons.remove_rounded)),
+                     Text('$packageCount', style: const TextStyle(fontWeight: FontWeight.w900)),
+-                    IconButton(onPressed: packageCount >= 20 ? null : () => setState(() => packageCount++), icon: const Icon(Icons.add_rounded)),
++                    IconButton(onPressed: packageCount >= 20 ? null : () => setState(() { packageCount++; deliveryQuote = null; }), icon: const Icon(Icons.add_rounded)),
+                   ]),
+                 ),
+               ]),
+               const SizedBox(height: 10),
++              DropdownButtonFormField<String>(
++                value: serviceLevel,
++                decoration: InputDecoration(labelText: 'Service'.tr),
++                items: <DropdownMenuItem<String>>[
++                  DropdownMenuItem(value: 'standard', child: Text('Standard'.tr)),
++                  DropdownMenuItem(value: 'urgent', child: Text('Urgent / same-day'.tr)),
++                ],
++                onChanged: (v) => setState(() { serviceLevel = v ?? serviceLevel; deliveryQuote = null; }),
++              ),
++              const SizedBox(height: 10),
+               TextField(controller: notes, maxLines: 3, decoration: const InputDecoration(labelText: 'Delivery instructions', hintText: 'Access code, fragile parcel, leave with reception…')),
+-              const SizedBox(height: 22),
++              const SizedBox(height: 18),
++              OutlinedButton.icon(
++                onPressed: quoteLoading || widget.session.busy ? null : _getQuote,
++                icon: quoteLoading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.calculate_outlined),
++                label: Text('Get delivery price'.tr),
++              ),
++              if (deliveryQuote != null) ...<Widget>[
++                const SizedBox(height: 12),
++                Container(
++                  padding: const EdgeInsets.all(16),
++                  decoration: BoxDecoration(color: const Color(0xFFF3F3F1), borderRadius: BorderRadius.circular(18)),
++                  child: Row(children: <Widget>[
++                    const Icon(Icons.payments_outlined),
++                    const SizedBox(width: 12),
++                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
++                      Text('Delivery price'.tr, style: const TextStyle(color: AppTheme.softInk, fontWeight: FontWeight.w700)),
++                      Text(deliveryQuote!.priceLabel, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
++                      Text('${deliveryQuote!.distance.toStringAsFixed(1)} ${deliveryQuote!.distanceUnit} · ${deliveryQuote!.durationMinutes.toStringAsFixed(0)} min', style: const TextStyle(color: AppTheme.softInk)),
++                    ])),
++                  ]),
++                ),
++              ],
++              const SizedBox(height: 18),
+               FilledButton.icon(
+                 onPressed: widget.session.busy ? null : _submit,
+                 icon: const Icon(Icons.local_shipping_outlined),
+                 label: widget.session.busy
+                     ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
+-                    : const Text('Request delivery'),
++                    : Text('Confirm delivery'.tr),
+               ),
+               const SizedBox(height: 8),
+-              const Text('Delivery pricing can be connected to the same Mobility pricing/payment engine in the next pricing layer.', textAlign: TextAlign.center, style: TextStyle(color: AppTheme.softInk, fontSize: 12)),
++              Text('Price is calculated by the platform and rechecked when the delivery is created.'.tr, textAlign: TextAlign.center, style: const TextStyle(color: AppTheme.softInk, fontSize: 12)),
+             ],
+           ),
+         ),
+ diff -ruN '--exclude=.dart_tool' '--exclude=build' passenger060/lib/state/passenger_session.dart passenger061/lib/state/passenger_session.dart
+--- passenger060/lib/state/passenger_session.dart	2026-10-09 15:36:08.000000000 +0000
++++ passenger061/lib/state/passenger_session.dart	2026-10-09 17:28:52.093437539 +0000
+@@ -9,6 +9,7 @@
+ import '../models/passenger_booking.dart';
+ import '../models/nearby_car.dart';
+ import '../models/vehicle_quote.dart';
++import '../models/delivery_quote.dart';
+ import '../models/place_selection.dart';
+ import '../services/device_store.dart';
+ import '../services/realtime_service.dart';
+@@ -282,6 +283,13 @@
+ 
+   Future<FareQuote> quote(Map<String,Object?> request) async {if(_api==null)throw const ApiException('Not connected.');busy=true;errorMessage=null;notifyListeners();try{lastQuoteRequest=Map<String,Object?>.from(request);lastQuote=FareQuote.fromJson(await _api!.quote(request));return lastQuote!;}finally{busy=false;notifyListeners();}}
+   Future<PassengerBooking> createBooking(VehicleQuote vehicle,{String paymentMethod='online'}) async {if(_api==null||lastQuoteRequest==null)throw const ApiException('Request a fare first.');final body=<String,Object?>{...lastQuoteRequest!,'vehicle_id':vehicle.id,'payment_method':paymentMethod,'terms_accept':true};busy=true;notifyListeners();try{final r=await _api!.createBooking(body).timeout(const Duration(seconds:12));final b=PassengerBooking.fromJson(Map<String,dynamic>.from(r['booking'] as Map));bookings.insert(0,b);activeBooking=b;notifyListeners();unawaited(_connectBooking(b.id));unawaited(refreshBooking(b.id,silent:true));return b;}finally{busy=false;notifyListeners();}}
++  Future<DeliveryQuote> deliveryQuote(Map<String,Object?> body) async {
++    final api=_api;if(api==null)throw const ApiException('Not connected.');
++    busy=true;errorMessage=null;notifyListeners();
++    try{return DeliveryQuote.fromJson(await api.deliveryQuote(body).timeout(const Duration(seconds:20)));}
++    finally{busy=false;notifyListeners();}
++  }
+   Future<PassengerBooking> createDelivery(Map<String,Object?> body) async {
+     final api=_api;if(api==null)throw const ApiException('Not connected.');
+     busy=true;errorMessage=null;notifyListeners();
+ diff -ruN '--exclude=.dart_tool' '--exclude=build' passenger060/pubspec.yaml passenger061/pubspec.yaml
+--- passenger060/pubspec.yaml	2026-10-09 15:36:08.000000000 +0000
++++ passenger061/pubspec.yaml	2026-10-09 17:28:52.093140857 +0000
+@@ -1,7 +1,7 @@
+ name: gaotus_mobility_passenger
+ description: Gaotus Mobility Passenger Flutter MVP
+ publish_to: 'none'
+-version: 0.6.0+21
++version: 0.6.1+22
+ 
+ environment:
+   sdk: '>=3.5.0 <4.0.0'
