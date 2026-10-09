@@ -1,0 +1,265 @@
+View(
++                    controller: controller,
++                    padding: EdgeInsets.fromLTRB(20, 0, 20, MediaQuery.paddingOf(context).bottom + 24),
++                    children: <Widget>[
++                      const SheetHandle(),
++                      Row(children: <Widget>[
++                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
++                          Text(_statusLabel(job), style: Theme.of(context).textTheme.headlineSmall),
++                          const SizedBox(height: 4),
++                          Text('${job.completedStops}/${job.stops.length} stops completed', style: const TextStyle(color: AppTheme.softInk)),
++                        ])),
++                        StatusPill(label: job.status.toUpperCase(), live: tracking?.signal == 'live'),
++                      ]),
++                      const SizedBox(height: 16),
++                      LinearProgressIndicator(
++                        value: job.stops.isEmpty ? 0 : (job.completedStops / job.stops.length).clamp(0, 1),
++                        minHeight: 7,
++                        borderRadius: BorderRadius.circular(99),
++                      ),
++                      if (driver != null) ...<Widget>[
++                        const SizedBox(height: 18),
++                        _DriverCard(
++                          driver: driver,
++                          onCall: (driver['phone'] ?? '').toString().isEmpty ? null : () => launchUrl(Uri.parse('tel:${driver['phone']}')),
++                          onChat: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PassengerChatScreen(session: widget.session, bookingId: job.id))),
++                        ),
++                      ],
++                      if (next != null) ...<Widget>[
++                        const SizedBox(height: 18),
++                        Container(
++                          padding: const EdgeInsets.all(16),
++                          decoration: BoxDecoration(color: const Color(0xFFF4F6F8), borderRadius: BorderRadius.circular(22)),
++                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
++                            Text('Next · ${next.operationLabel}', style: const TextStyle(fontSize: 12, color: AppTheme.softInk, fontWeight: FontWeight.w900)),
++                            const SizedBox(height: 5),
++                            Text(next.address, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
++                            if (next.recipientName.isNotEmpty || next.contactName.isNotEmpty) ...<Widget>[
++                              const SizedBox(height: 5),
++                              Text(next.recipientName.isNotEmpty ? next.recipientName : next.contactName),
++                            ],
++                          ]),
++                        ),
++                      ],
++                      const SizedBox(height: 20),
++                      Text('Delivery route', style: Theme.of(context).textTheme.titleLarge),
++                      const SizedBox(height: 8),
++                      ...job.stops.map((stop) => _StopRow(stop: stop)),
++                      if (job.active) ...<Widget>[
++                        const SizedBox(height: 14),
++                        OutlinedButton.icon(onPressed: _cancel, icon: const Icon(Icons.close_rounded), label: const Text('Cancel delivery')),
++                      ],
++                      const SizedBox(height: 10),
++                      Center(child: Text('Delivery #${job.id}', style: Theme.of(context).textTheme.bodySmall)),
++                    ],
++                  ),
++                ),
++              ),
++            ]),
++          );
++        },
++      );
++
++  String _statusLabel(PassengerBooking job) {
++    if (job.completed) return 'Delivery completed';
++    if (job.cancelled) return 'Delivery cancelled';
++    final next = job.nextStop;
++    if (job.status == 'pending') return 'Finding a driver';
++    if (next?.status == 'arrived') return 'Driver at ${next?.operationLabel.toLowerCase()}';
++    if (next?.status == 'enroute') return 'Driver heading to ${next?.operationLabel.toLowerCase()}';
++    return job.driver == null ? 'Delivery requested' : 'Delivery in progress';
++  }
++}
++
++class _StopRow extends StatelessWidget {
++  const _StopRow({required this.stop});
++  final PassengerOperationStop stop;
++
++  @override
++  Widget build(BuildContext context) {
++    final done = stop.status == 'completed';
++    return Padding(
++      padding: const EdgeInsets.only(bottom: 10),
++      child: Container(
++        padding: const EdgeInsets.all(14),
++        decoration: BoxDecoration(color: done ? const Color(0xFFE8F7F0) : const Color(0xFFF7F7F5), borderRadius: BorderRadius.circular(18)),
++        child: Row(children: <Widget>[
++          CircleAvatar(
++            radius: 18,
++            backgroundColor: done ? AppTheme.success : AppTheme.ink,
++            foregroundColor: Colors.white,
++            child: done ? const Icon(Icons.check_rounded, size: 19) : Text('${stop.sequence}', style: const TextStyle(fontWeight: FontWeight.w900)),
++          ),
++          const SizedBox(width: 12),
++          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
++            Text(stop.operationLabel, style: const TextStyle(fontWeight: FontWeight.w900)),
++            const SizedBox(height: 2),
++            Text(stop.address, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.softInk)),
++          ])),
++          Text(stop.status.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppTheme.softInk)),
++        ]),
++      ),
++    );
++  }
++}
++
++class _StopMarker extends StatelessWidget {
++  const _StopMarker({required this.stop});
++  final PassengerOperationStop stop;
++  @override
++  Widget build(BuildContext context) => Container(
++        decoration: BoxDecoration(
++          shape: BoxShape.circle,
++          color: stop.status == 'completed' ? AppTheme.success : AppTheme.ink,
++          border: Border.all(color: Colors.white, width: 3),
++          boxShadow: const <BoxShadow>[BoxShadow(color: Color(0x33000000), blurRadius: 8)],
++        ),
++        alignment: Alignment.center,
++        child: Text('${stop.sequence}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
++      );
++}
++
++class _DriverCard extends StatelessWidget {
++  const _DriverCard({required this.driver, required this.onChat, this.onCall});
++  final Map<String, dynamic> driver;
++  final VoidCallback onChat;
++  final VoidCallback? onCall;
++
++  @override
++  Widget build(BuildContext context) {
++    final vehicle = '${driver['vehicle_make'] ?? ''} ${driver['vehicle_model'] ?? ''}'.trim();
++    final plate = (driver['vehicle_plate'] ?? '').toString();
++    return Row(children: <Widget>[
++      const CircleAvatar(radius: 28, backgroundColor: Color(0xFFF0F0ED), child: Icon(Icons.person_rounded, size: 30)),
++      const SizedBox(width: 12),
++      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
++        Text((driver['name'] ?? 'Your driver').toString(), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
++        Text([vehicle, plate].where((e) => e.isNotEmpty).join(' · '), style: const TextStyle(color: AppTheme.softInk)),
++      ])),
++      IconButton.filledTonal(onPressed: onCall, icon: const Icon(Icons.call_rounded)),
++      const SizedBox(width: 6),
++      IconButton.filledTonal(onPressed: onChat, icon: const Icon(Icons.chat_bubble_outline_rounded)),
++    ]);
++  }
++}
+diff -ruN old/passenger/lib/screens/home_screen.dart new/passenger/lib/screens/home_screen.dart
+--- old/passenger/lib/screens/home_screen.dart	2026-10-09 09:56:59.000000000 +0000
++++ new/passenger/lib/screens/home_screen.dart	2026-10-09 10:16:47.387183717 +0000
+@@ -12,6 +12,8 @@
+ import 'pickup_confirm_screen.dart';
+ import 'quote_screen.dart';
+ import 'trip_screen.dart';
++import 'delivery_screen.dart';
++import 'send_parcel_screen.dart';
+ 
+ class HomeScreen extends StatefulWidget {
+   const HomeScreen({super.key, required this.session});
+@@ -241,7 +243,7 @@
+             ListTile(leading: const Icon(Icons.refresh_rounded), title: const Text('Refresh rides'), onTap: () { Navigator.pop(sheetContext); s.refreshBookings(); }),
+             ListTile(leading: const Icon(Icons.help_outline_rounded), title: const Text('Help & safety'), subtitle: const Text('Coming in the next UI sprint'), onTap: () {}),
+             const Divider(),
+-            const ListTile(leading: Icon(Icons.info_outline_rounded), title: Text('Passenger v0.5.7'), subtitle: Text('Live nearby cars + automatic realtime ride updates')),
++            const ListTile(leading: Icon(Icons.info_outline_rounded), title: Text('Passenger v0.5.8'), subtitle: Text('Unified rides + parcel delivery with live operations tracking')),
+             ListTile(leading: const Icon(Icons.logout_rounded), title: const Text('Sign out'), onTap: () { Navigator.pop(sheetContext); s.logout(); }),
+           ]),
+         ),
+@@ -299,15 +301,15 @@
+                   if (active != null) ...<Widget>[
+                     InkWell(
+                       borderRadius: BorderRadius.circular(20),
+-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TripScreen(session: s, bookingId: active.id))),
++                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => active.isRide ? TripScreen(session: s, bookingId: active.id) : DeliveryScreen(session: s, bookingId: active.id))),
+                       child: Container(
+                         padding: const EdgeInsets.all(16),
+                         decoration: BoxDecoration(color: AppTheme.ink, borderRadius: BorderRadius.circular(20)),
+                         child: Row(children: <Widget>[
+-                          const CircleAvatar(backgroundColor: AppTheme.accent, child: Icon(Icons.local_taxi_rounded, color: AppTheme.ink)),
++                          CircleAvatar(backgroundColor: AppTheme.accent, child: Icon(active.isRide ? Icons.local_taxi_rounded : Icons.local_shipping_rounded, color: AppTheme.ink)),
+                           const SizedBox(width: 13),
+                           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+-                            Text(_activeLabel(active.status), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
++                            Text(active.isRide ? _activeLabel(active.status) : _activeDeliveryLabel(active), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+                             const SizedBox(height: 3),
+                             Text(active.dropoff, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFCACACA), fontSize: 13)),
+                           ])),
+@@ -317,6 +319,12 @@
+                     ),
+                     const SizedBox(height: 20),
+                   ],
++                  Row(children: <Widget>[
++                    Expanded(child: _ServiceTile(icon: Icons.local_taxi_rounded, title: 'Ride', subtitle: 'Book a car', selected: true, onTap: () {})),
++                    const SizedBox(width: 10),
++                    Expanded(child: _ServiceTile(icon: Icons.local_shipping_outlined, title: 'Send parcel', subtitle: 'Door to door', onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => SendParcelScreen(session: s))))),
++                  ]),
++                  const SizedBox(height: 20),
+                   Text('Plan your ride', style: Theme.of(context).textTheme.headlineMedium),
+                   const SizedBox(height: 16),
+                   Container(
+@@ -426,17 +434,19 @@
+                   const SizedBox(height: 14),
+                   FilledButton(onPressed: s.busy ? null : getQuote, child: s.busy ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.3, color: Colors.white)) : const Text('See ride options')),
+                   const SizedBox(height: 22),
+-                  Row(children: <Widget>[Expanded(child: Text('Recent trips', style: Theme.of(context).textTheme.titleLarge)), Text('${s.bookings.length}', style: Theme.of(context).textTheme.bodySmall)]),
++                  Row(children: <Widget>[Expanded(child: Text('Recent activity', style: Theme.of(context).textTheme.titleLarge)), Text('${s.bookings.length}', style: Theme.of(context).textTheme.bodySmall)]),
+                   const SizedBox(height: 8),
+                   if (s.bookings.isEmpty)
+-                    const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Text('Your rides will appear here.', style: TextStyle(color: AppTheme.softInk)))
++                    const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Text('Your rides and deliveries will appear here.', style: TextStyle(color: AppTheme.softInk)))
+                   else
+                     ...s.bookings.take(4).map((ride) => AddressRow(
+-                          icon: const Icon(Icons.history_rounded, size: 21),
+-                          title: ride.dropoff.isEmpty ? 'Ride #${ride.id}' : ride.dropoff,
+-                          subtitle: '${ride.pickupDate} ${ride.pickupTime} · £${ride.total.toStringAsFixed(2)}',
++                          icon: Icon(ride.isRide ? Icons.history_rounded : Icons.local_shipping_outlined, size: 21),
++                          title: ride.dropoff.isEmpty ? '${ride.jobTypeLabel} #${ride.id}' : ride.dropoff,
++                          subtitle: ride.isRide
++                              ? '${ride.pickupDate} ${ride.pickupTime} · £${ride.total.toStringAsFixed(2)}'
++                              : '${ride.pickupDate} ${ride.pickupTime} · ${ride.completedStops}/${ride.stops.length} stops',
+                           trailing: const Icon(Icons.chevron_right_rounded),
+-                          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TripScreen(session: s, bookingId: ride.id))),
++                          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ride.isRide ? TripScreen(session: s, bookingId: ride.id) : DeliveryScreen(session: s, bookingId: ride.id))),
+                         )),
+                 ],
+               ),
+@@ -447,6 +457,15 @@
+     );
+   }
+ 
++  String _activeDeliveryLabel(dynamic job) {
++    if (job.status == 'pending') return 'Finding a delivery driver';
++    if (job.status == 'completed') return 'Delivery completed';
++    final next = job.nextStop;
++    if (next?.status == 'arrived') return 'Driver at ${next.operationLabel.toLowerCase()}';
++    if (next?.status == 'enroute') return 'Driver heading to ${next.operationLabel.toLowerCase()}';
++    return 'Delivery in progress';
++  }
++
+   String _scheduleLabel(DateTime value) {
+     final now = DateTime.now();
+     final soon = value.difference(now).inMinutes < 20;
+@@ -467,6 +486,37 @@
+ }
+ 
+ 
++
++class _ServiceTile extends StatelessWidget {
++  const _ServiceTile({required this.icon, required this.title, required this.subtitle, required this.onTap, this.selected = false});
++  final IconData icon;
++  final String title;
++  final String subtitle;
++  final VoidCallback onTap;
++  final bool selected;
++
++  @override
++  Widget build(BuildContext context) => Material(
++        color: selected ? AppTheme.ink : const Color(0xFFF3F3F1),
++        borderRadius: BorderRadius.circular(20),
++        child: InkWell(
++          borderRadius: BorderRadius.circular(20),
++          onTap: onTap,
++          child: Padding(
++            padding: const EdgeInsets.all(15),
++            child: Row(children: <Widget>[
++              Icon(icon, color: selected ? Colors.white : AppTheme.ink),
++              const SizedBox(width: 10),
++              Expanded(child: Column(crossAx
