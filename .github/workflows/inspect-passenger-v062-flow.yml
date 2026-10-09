@@ -1,0 +1,51 @@
+name: Inspect Passenger v0.6.2 Flow
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct current passenger source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          path=Path('.github/workflows/build-passenger-v057.yml')
+          lines=path.read_text().splitlines(); blocks=[]; i=0
+          while i < len(lines):
+              if 'uses: actions/setup-java@v4' in lines[i]: break
+              if lines[i].startswith('        run: |'):
+                  i+=1; body=[]
+                  while i < len(lines):
+                      cur=lines[i]
+                      if cur.startswith('      - '): break
+                      if cur.startswith('          '): body.append(cur[10:])
+                      elif cur.strip()=='': body.append('')
+                      else: body.append(cur.lstrip())
+                      i+=1
+                  blocks.append('\n'.join(body)); continue
+              i+=1
+          for block in blocks: subprocess.run(['bash','-euo','pipefail','-c',block],check=True)
+          PY
+          cat .passenger058/patch-00 .passenger058/patch-01 .passenger058/patch-02 .passenger058/patch-03 > /tmp/p058.patch
+          patch -p2 -d passenger < /tmp/p058.patch
+          python3 .passenger059/patch059.py
+          python3 .localization-pack/patch_localization.py passenger
+          python3 .localization-pack/fix_runtime_const.py passenger
+          cat .passenger061/patch-00 .passenger061/patch-01 .passenger061/patch-02 .passenger061/patch-03 .passenger061/patch-04 > /tmp/p061.patch
+          patch -p1 -d passenger < /tmp/p061.patch
+          patch -p1 -d passenger < .passenger062/passenger-v062-driver-identity-chat.patch
+          python3 .passenger062/fix062.py
+      - name: Show ride and chat source
+        run: |
+          echo 'QUOTE_SCREEN_START'
+          cat passenger/lib/screens/quote_screen.dart
+          echo 'PICKUP_SCREEN_START'
+          cat passenger/lib/screens/pickup_confirm_screen.dart
+          echo 'CHAT_SCREEN_START'
+          cat passenger/lib/screens/chat_screen.dart
+          echo 'NOTIFICATION_SERVICE_START'
+          cat passenger/lib/services/passenger_notification_service.dart
