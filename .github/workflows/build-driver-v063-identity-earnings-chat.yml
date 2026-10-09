@@ -53,6 +53,7 @@ jobs:
       - name: Apply Driver v0.6.3 integration patch
         run: |
           patch -p1 -d driver < .driver063/driver-v063-identity-earnings-chat.patch
+          python3 .driver063/fix063.py
           grep -q 'version: 0.6.3+18' driver/pubspec.yaml
           grep -q "static const String version = '0.6.3';" driver/lib/config/app_config.dart
           grep -q 'jobTypeLabel' driver/lib/models/earnings_summary.dart
