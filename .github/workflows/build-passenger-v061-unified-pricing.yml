@@ -52,7 +52,8 @@ jobs:
 
       - name: Apply Passenger v0.6.1 unified pricing
         run: |
-          patch -p1 -d passenger < .passenger061/passenger-v061-unified-pricing.patch
+          cat .passenger061/patch-00 .passenger061/patch-01 .passenger061/patch-02 .passenger061/patch-03 .passenger061/patch-04 > /tmp/passenger061.patch
+          patch -p1 -d passenger < /tmp/passenger061.patch
           grep -q 'version: 0.6.1+22' passenger/pubspec.yaml
           grep -q "static const version = '0.6.1';" passenger/lib/config/app_config.dart
           grep -q 'deliveryQuote' passenger/lib/core/api_client.dart
