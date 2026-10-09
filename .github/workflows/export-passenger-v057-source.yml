@@ -1,0 +1,76 @@
+name: Export Passenger v0.5.7 Source
+
+on:
+  push:
+    branches: [ unified-operations-dev ]
+    paths:
+      - '.github/workflows/export-passenger-v057-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reproduce canonical Passenger v0.5.7 source chain
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          path = Path('.github/workflows/build-passenger-v057.yml')
+          lines = path.read_text().splitlines()
+          blocks = []
+          i = 0
+          while i < len(lines):
+              line = lines[i]
+              if 'uses: actions/setup-java@v4' in line:
+                  break
+              if line.startswith('        run: |'):
+                  i += 1
+                  body = []
+                  while i < len(lines):
+                      current = lines[i]
+                      if current.startswith('      - '):
+                          break
+                      if current.startswith('          '):
+                          body.append(current[10:])
+                      elif current.strip() == '':
+                          body.append('')
+                      else:
+                          body.append(current.lstrip())
+                      i += 1
+                  blocks.append('\n'.join(body))
+                  continue
+              i += 1
+
+          if not blocks:
+              raise SystemExit('No canonical reconstruction blocks found')
+
+          print(f'Executing {len(blocks)} canonical source blocks')
+          for index, block in enumerate(blocks, 1):
+              print(f'--- canonical block {index}/{len(blocks)} ---')
+              subprocess.run(['bash', '-euxo', 'pipefail', '-c', block], check=True)
+
+          passenger = Path('passenger')
+          if not passenger.exists():
+              raise SystemExit('Passenger source was not reconstructed')
+          pubspec = (passenger / 'pubspec.yaml').read_text()
+          if 'version: 0.5.7' not in pubspec:
+              raise SystemExit('Expected Passenger v0.5.7 source version not found')
+          PY
+          zip -qr Gaotus-Mobility-Passenger-v0.5.7-SOURCE.zip passenger
+          sha256sum Gaotus-Mobility-Passenger-v0.5.7-SOURCE.zip > SHA256SUMS-PASSENGER-SOURCE.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaotus-Mobility-Passenger-v0.5.7-SOURCE
+          path: |
+            Gaotus-Mobility-Passenger-v0.5.7-SOURCE.zip
+            SHA256SUMS-PASSENGER-SOURCE.txt
+          if-no-files-found: error
