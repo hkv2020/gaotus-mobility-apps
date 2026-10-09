@@ -1,0 +1,82 @@
+name: Audit Country Aware Mobile
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ unified-operations-dev ]
+    paths:
+      - '.github/workflows/audit-country-aware-mobile.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct Driver v0.6.0
+        run: |
+          { head -c 12000 .driver050final/chunk-00.b64; cat .driver050final/chunk-01.b64 .driver050final/chunk-02.b64 .driver050final/chunk-03.b64 .driver050final/chunk-04.b64 .driver050final/chunk-05.b64; } | base64 -d > /tmp/driver050.zip
+          rm -rf /tmp/driver051 driver
+          mkdir -p /tmp/driver051
+          unzip -q /tmp/driver050.zip -d /tmp/driver051
+          cp -a /tmp/driver051/gaotus-mobility-driver-v0.5.0 ./driver
+          patch -p1 -d driver < .driver051/driver-v051-signin.patch >/dev/null
+          python3 .driver052/patch052.py >/dev/null
+          python3 .driver053/patch053.py >/dev/null
+          python3 .driver054/patch054.py >/dev/null
+          python3 .driver055/patch055.py >/dev/null
+          python3 .driver056/patch056.py >/dev/null
+          python3 .driver057/patch057.py >/dev/null
+          python3 .driver058/patch058.py >/dev/null
+          python3 .driver059/patch059.py >/dev/null
+          python3 .driver059fix/patch059fix.py >/dev/null
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64,zlib
+          blob=Path('.driver060/driver-v060.patch.zlib.b64').read_text().strip()
+          Path('/tmp/driver060.patch').write_bytes(zlib.decompress(base64.b64decode(blob)))
+          PY
+          patch -p1 -d driver < /tmp/driver060.patch >/dev/null
+
+      - name: Driver currency and hub contexts
+        run: |
+          echo '=== DRIVER HARD CURRENCY ==='
+          grep -R -n -B5 -A8 -E '£|GBP|RON' driver/lib || true
+          echo '=== DRIVER HUB ASSIGNMENTS ==='
+          grep -R -n -B8 -A14 -E 'driverHub|appHub|app-hub|preferences' driver/lib/state driver/lib/core || true
+
+      - name: Reconstruct Passenger v0.5.8
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          path=Path('.github/workflows/build-passenger-v057.yml')
+          lines=path.read_text().splitlines(); blocks=[]; i=0
+          while i < len(lines):
+              if 'uses: actions/setup-java@v4' in lines[i]: break
+              if lines[i].startswith('        run: |'):
+                  i+=1; body=[]
+                  while i < len(lines):
+                      cur=lines[i]
+                      if cur.startswith('      - '): break
+                      if cur.startswith('          '): body.append(cur[10:])
+                      elif cur.strip()=='': body.append('')
+                      else: body.append(cur.lstrip())
+                      i+=1
+                  blocks.append('\n'.join(body)); continue
+              i+=1
+          for b in blocks: subprocess.run(['bash','-euo','pipefail','-c',b],check=True)
+          PY
+          cat .passenger058/patch-00 .passenger058/patch-01 .passenger058/patch-02 .passenger058/patch-03 > /tmp/passenger058.patch
+          patch -p2 -d passenger < /tmp/passenger058.patch >/dev/null
+
+      - name: Passenger currency and auth contexts
+        run: |
+          echo '=== PASSENGER HARD CURRENCY ==='
+          grep -R -n -B5 -A8 -E '£|GBP|RON' passenger/lib || true
+          echo '=== PASSENGER AUTH ME / SESSION ==='
+          grep -R -n -B8 -A14 -E "auth/me|Future.*me|profile|customerProfile|me\(" passenger/lib/state passenger/lib/core || true
