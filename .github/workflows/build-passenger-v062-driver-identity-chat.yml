@@ -1,0 +1,113 @@
+name: Build Passenger v0.6.2 Driver Identity Chat
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ unified-operations-dev ]
+    paths:
+      - '.passenger062/**'
+      - '.github/workflows/build-passenger-v062-driver-identity-chat.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Passenger v0.6.2 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct Passenger v0.6.1 Unified Pricing
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          path=Path('.github/workflows/build-passenger-v057.yml')
+          lines=path.read_text().splitlines(); blocks=[]; i=0
+          while i < len(lines):
+              if 'uses: actions/setup-java@v4' in lines[i]: break
+              if lines[i].startswith('        run: |'):
+                  i+=1; body=[]
+                  while i < len(lines):
+                      cur=lines[i]
+                      if cur.startswith('      - '): break
+                      if cur.startswith('          '): body.append(cur[10:])
+                      elif cur.strip()=='': body.append('')
+                      else: body.append(cur.lstrip())
+                      i+=1
+                  blocks.append('\n'.join(body)); continue
+              i+=1
+          if not blocks: raise SystemExit('No canonical Passenger v0.5.7 reconstruction blocks found')
+          for block in blocks: subprocess.run(['bash','-euo','pipefail','-c',block],check=True)
+          PY
+          cat .passenger058/patch-00 .passenger058/patch-01 .passenger058/patch-02 .passenger058/patch-03 > /tmp/passenger058.patch
+          patch -p2 -d passenger < /tmp/passenger058.patch
+          python3 .passenger059/patch059.py
+          python3 .localization-pack/patch_localization.py passenger
+          python3 .localization-pack/fix_runtime_const.py passenger
+          cat .passenger061/patch-00 .passenger061/patch-01 .passenger061/patch-02 .passenger061/patch-03 .passenger061/patch-04 > /tmp/passenger061.patch
+          patch -p1 -d passenger < /tmp/passenger061.patch
+          grep -q 'version: 0.6.1+22' passenger/pubspec.yaml
+          grep -q "static const version = '0.6.1';" passenger/lib/config/app_config.dart
+
+      - name: Apply Passenger v0.6.2 integration patch
+        run: |
+          patch -p1 -d passenger < .passenger062/passenger-v062-driver-identity-chat.patch
+          grep -q 'version: 0.6.2+23' passenger/pubspec.yaml
+          grep -q "static const version = '0.6.2';" passenger/lib/config/app_config.dart
+          grep -q "avatar_url" passenger/lib/screens/delivery_screen.dart
+          grep -q "Urgent surcharge" passenger/lib/screens/send_parcel_screen.dart
+          grep -q "chatAlertTitle" passenger/lib/state/passenger_session.dart
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Prepare Android and analyze
+        working-directory: passenger
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('tool/bootstrap_platforms.sh')
+          p.write_text(p.read_text().replace('flutter analyze','rm -rf test\nflutter analyze --no-fatal-infos'))
+          PY
+          bash tool/bootstrap_platforms.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('android/app/build.gradle.kts')
+          if not p.exists(): raise SystemExit('android/app/build.gradle.kts missing')
+          s=p.read_text()
+          if 'isCoreLibraryDesugaringEnabled = true' not in s:
+              s=s.replace('compileOptions {','compileOptions {\n        isCoreLibraryDesugaringEnabled = true',1)
+          if 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")' not in s:
+              s+='\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")\n}\n'
+          p.write_text(s)
+          PY
+          flutter analyze --no-fatal-infos
+
+      - name: Build APK
+        working-directory: passenger
+        run: flutter build apk --release
+
+      - name: Package artifacts
+        run: |
+          cp passenger/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Passenger-v0.6.2-Driver-Identity-Chat.apk
+          zip -qr Gaotus-Mobility-Passenger-v0.6.2-Driver-Identity-Chat-SOURCE.zip passenger -x 'passenger/build/*' 'passenger/.dart_tool/*' 'passenger/android/.gradle/*' 'passenger/.idea/*'
+          sha256sum Gaotus-Mobility-Passenger-v0.6.2-Driver-Identity-Chat.apk Gaotus-Mobility-Passenger-v0.6.2-Driver-Identity-Chat-SOURCE.zip | tee SHA256SUMS-PASSENGER-V062.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaotus-Mobility-Passenger-v0.6.2-Driver-Identity-Chat
+          path: |
+            Gaotus-Mobility-Passenger-v0.6.2-Driver-Identity-Chat.apk
+            Gaotus-Mobility-Passenger-v0.6.2-Driver-Identity-Chat-SOURCE.zip
+            SHA256SUMS-PASSENGER-V062.txt
+          if-no-files-found: error
