@@ -1,0 +1,358 @@
+diff -ruN old/passenger/README.md new/passenger/README.md
+--- old/passenger/README.md	2026-09-23 01:30:42.000000000 +0000
++++ new/passenger/README.md	2026-10-09 10:16:47.387417144 +0000
+@@ -20,3 +20,9 @@
+ - no fake nearby vehicles are rendered on the map
+ 
+ Staging server default: https://beaphoenix.eu
++
++
++## v0.5.8 Unified Customer
++- Adds Send Parcel alongside Ride without changing the existing ride quote/booking flow.
++- Uses Mobility Platform /customer/deliveries and unified booking IDs.
++- Adds delivery stop progress, driver live tracking and chat in the same app.
+diff -ruN old/passenger/lib/config/app_config.dart new/passenger/lib/config/app_config.dart
+--- old/passenger/lib/config/app_config.dart	2026-10-09 09:56:59.000000000 +0000
++++ new/passenger/lib/config/app_config.dart	2026-10-09 10:16:47.385820223 +0000
+@@ -1,6 +1,6 @@
+ final class AppConfig {
+   static const appName = 'Gaotus Mobility';
+-  static const version = '0.5.7';
++  static const version = '0.5.8';
+   static const defaultServer = 'https://beaphoenix.eu';
+   static const namespace = '/wp-json/gaotus-mobility/v1';
+ 
+diff -ruN old/passenger/lib/core/api_client.dart new/passenger/lib/core/api_client.dart
+--- old/passenger/lib/core/api_client.dart	2026-10-09 09:56:59.000000000 +0000
++++ new/passenger/lib/core/api_client.dart	2026-10-09 10:16:47.386013690 +0000
+@@ -57,6 +57,7 @@
+   Future<Map<String,dynamic>> placeDetails(String placeId,{String sessionToken=''}) => request('POST','/customer/maps/place',body:{'place_id':placeId,'session_token':sessionToken});
+   Future<Map<String,dynamic>> reverseGeocode(double lat,double lng) => request('POST','/customer/maps/reverse',body:{'lat':lat,'lng':lng});
+   Future<Map<String,dynamic>> createBooking(Map<String,Object?> body) => request('POST','/customer/bookings',body:body);
++  Future<Map<String,dynamic>> createDelivery(Map<String,Object?> body) => request('POST','/customer/deliveries',body:body);
+   Future<Map<String,dynamic>> payment(int id) => request('POST','/customer/booking/$id/payment');
+   Future<Map<String,dynamic>> cancel(int id) => request('POST','/customer/booking/$id/cancel');
+   Future<Map<String,dynamic>> rate(int id, int stars, String comment) => request('POST','/customer/booking/$id/rate',body:{'stars':stars,'comment':comment});
+diff -ruN old/passenger/lib/models/booking.dart new/passenger/lib/models/booking.dart
+--- old/passenger/lib/models/booking.dart	2026-09-22 16:34:30.000000000 +0000
++++ new/passenger/lib/models/booking.dart	2026-10-09 10:16:47.385943761 +0000
+@@ -1,37 +1,86 @@
++import 'operation_stop.dart';
++
+ final class PassengerBooking {
+   const PassengerBooking({
+-    required this.id, required this.status, required this.pickup, required this.dropoff,
+-    required this.total, this.pickupLat, this.pickupLng, this.dropoffLat, this.dropoffLng,
+-    this.driver, this.payment=const <String,dynamic>{}, this.review=const <String,dynamic>{},
+-    this.pickupDate='', this.pickupTime='', this.vehicleType,
++    required this.id,
++    required this.status,
++    required this.pickup,
++    required this.dropoff,
++    required this.total,
++    this.pickupLat,
++    this.pickupLng,
++    this.dropoffLat,
++    this.dropoffLng,
++    this.driver,
++    this.payment = const <String, dynamic>{},
++    this.review = const <String, dynamic>{},
++    this.pickupDate = '',
++    this.pickupTime = '',
++    this.vehicleType,
++    this.jobType = 'ride',
++    this.jobTypeLabel = 'Ride',
++    this.stops = const <PassengerOperationStop>[],
++    this.operations = const <String, dynamic>{},
+   });
++
+   final int id;
+   final String status;
+   final String pickup;
+   final String dropoff;
+   final double total;
+   final double? pickupLat, pickupLng, dropoffLat, dropoffLng;
+-  final Map<String,dynamic>? driver;
+-  final Map<String,dynamic> payment;
+-  final Map<String,dynamic> review;
++  final Map<String, dynamic>? driver;
++  final Map<String, dynamic> payment;
++  final Map<String, dynamic> review;
+   final String pickupDate, pickupTime;
+-  final Map<String,dynamic>? vehicleType;
++  final Map<String, dynamic>? vehicleType;
++  final String jobType;
++  final String jobTypeLabel;
++  final List<PassengerOperationStop> stops;
++  final Map<String, dynamic> operations;
+ 
+   bool get completed => status == 'completed';
+   bool get cancelled => status == 'cancelled' || status == 'rejected';
+   bool get active => !completed && !cancelled;
+-  bool get canRate => completed && review['given'] != true;
++  bool get canRate => jobType == 'ride' && completed && review['given'] != true;
++  bool get isRide => jobType == 'ride';
++  bool get isOperationsJob => !isRide;
++  PassengerOperationStop? get nextStop {
++    for (final stop in stops) {
++      if (!stop.terminal) return stop;
++    }
++    return null;
++  }
++  int get completedStops => stops.where((s) => s.status == 'completed').length;
+ 
+-  factory PassengerBooking.fromJson(Map<String,dynamic> j) {
++  factory PassengerBooking.fromJson(Map<String, dynamic> j) {
+     double? d(Object? v) => v == null ? null : (v is num ? v.toDouble() : double.tryParse('$v'));
+-    Map<String,dynamic>? map(Object? v) => v is Map ? Map<String,dynamic>.from(v) : null;
++    Map<String, dynamic>? map(Object? v) => v is Map ? Map<String, dynamic>.from(v) : null;
++    final rawStops = j['stops'];
++    final stops = rawStops is List
++        ? rawStops.whereType<Map>().map((e) => PassengerOperationStop.fromJson(Map<String, dynamic>.from(e))).toList()
++        : <PassengerOperationStop>[];
++    final type = (j['job_type'] ?? 'ride').toString().trim().toLowerCase();
+     return PassengerBooking(
+       id: (j['id'] as num?)?.toInt() ?? 0,
+-      status: (j['status'] ?? 'pending').toString(),
+-      pickup: (j['pickup'] ?? '').toString(), dropoff: (j['dropoff'] ?? '').toString(),
+-      total: d(j['total']) ?? 0, pickupLat: d(j['pickup_lat']), pickupLng: d(j['pickup_lng']), dropoffLat: d(j['dropoff_lat']), dropoffLng: d(j['dropoff_lng']),
+-      driver: map(j['driver']), payment: map(j['payment']) ?? <String,dynamic>{}, review: map(j['review']) ?? <String,dynamic>{},
+-      pickupDate: (j['pickup_date'] ?? '').toString(), pickupTime: (j['pickup_time'] ?? '').toString(), vehicleType: map(j['vehicle_type']),
++      status: (j['status'] ?? 'pending').toString().toLowerCase(),
++      pickup: (j['pickup'] ?? '').toString(),
++      dropoff: (j['dropoff'] ?? '').toString(),
++      total: d(j['total']) ?? 0,
++      pickupLat: d(j['pickup_lat']),
++      pickupLng: d(j['pickup_lng']),
++      dropoffLat: d(j['dropoff_lat']),
++      dropoffLng: d(j['dropoff_lng']),
++      driver: map(j['driver']),
++      payment: map(j['payment']) ?? <String, dynamic>{},
++      review: map(j['review']) ?? <String, dynamic>{},
++      pickupDate: (j['pickup_date'] ?? '').toString(),
++      pickupTime: (j['pickup_time'] ?? '').toString(),
++      vehicleType: map(j['vehicle_type']),
++      jobType: type.isEmpty ? 'ride' : type,
++      jobTypeLabel: (j['job_type_label'] ?? (type == 'ride' ? 'Ride' : 'Delivery')).toString(),
++      stops: stops,
++      operations: map(j['operations']) ?? <String, dynamic>{},
+     );
+   }
+ }
+diff -ruN old/passenger/lib/models/operation_stop.dart new/passenger/lib/models/operation_stop.dart
+--- old/passenger/lib/models/operation_stop.dart	1970-01-01 00:00:00.000000000 +0000
++++ new/passenger/lib/models/operation_stop.dart	2026-10-09 10:16:47.385905358 +0000
+@@ -0,0 +1,78 @@
++final class PassengerOperationStop {
++  const PassengerOperationStop({
++    required this.id,
++    required this.sequence,
++    required this.operationType,
++    required this.status,
++    required this.address,
++    this.name = '',
++    this.contactName = '',
++    this.contactPhone = '',
++    this.lat,
++    this.lng,
++    this.packageRef = '',
++    this.packageCount = 0,
++    this.packageWeightKg = 0,
++    this.packageSize = '',
++    this.recipientName = '',
++    this.recipientPhone = '',
++    this.notes = '',
++    this.proofs = const <Map<String, dynamic>>[],
++  });
++
++  final int id;
++  final int sequence;
++  final String operationType;
++  final String status;
++  final String address;
++  final String name;
++  final String contactName;
++  final String contactPhone;
++  final double? lat;
++  final double? lng;
++  final String packageRef;
++  final int packageCount;
++  final double packageWeightKg;
++  final String packageSize;
++  final String recipientName;
++  final String recipientPhone;
++  final String notes;
++  final List<Map<String, dynamic>> proofs;
++
++  bool get terminal => const <String>{'completed', 'failed'}.contains(status);
++  String get operationLabel => switch (operationType) {
++        'pickup' => 'Collection',
++        'delivery' => 'Delivery',
++        'pickup_delivery' => 'Stop',
++        'passenger' => 'Passenger stop',
++        _ => 'Service stop',
++      };
++
++  factory PassengerOperationStop.fromJson(Map<String, dynamic> j) {
++    double? d(Object? value) => value == null ? null : (value is num ? value.toDouble() : double.tryParse('$value'));
++    final rawProofs = j['proofs'];
++    final proofs = rawProofs is List
++        ? rawProofs.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
++        : <Map<String, dynamic>>[];
++    return PassengerOperationStop(
++      id: (j['id'] as num?)?.toInt() ?? 0,
++      sequence: ((j['sequence'] ?? j['sequence_no']) as num?)?.toInt() ?? 0,
++      operationType: (j['operation_type'] ?? j['type'] ?? 'service').toString(),
++      status: (j['status'] ?? 'pending').toString().toLowerCase(),
++      address: (j['address'] ?? '').toString(),
++      name: (j['name'] ?? '').toString(),
++      contactName: (j['contact_name'] ?? '').toString(),
++      contactPhone: (j['contact_phone'] ?? '').toString(),
++      lat: d(j['lat']),
++      lng: d(j['lng']),
++      packageRef: (j['package_ref'] ?? '').toString(),
++      packageCount: (j['package_count'] as num?)?.toInt() ?? int.tryParse('${j['package_count'] ?? 0}') ?? 0,
++      packageWeightKg: d(j['package_weight_kg']) ?? 0,
++      packageSize: (j['package_size'] ?? '').toString(),
++      recipientName: (j['recipient_name'] ?? '').toString(),
++      recipientPhone: (j['recipient_phone'] ?? '').toString(),
++      notes: (j['notes'] ?? j['delivery_notes'] ?? '').toString(),
++      proofs: proofs,
++    );
++  }
++}
+diff -ruN old/passenger/lib/screens/delivery_screen.dart new/passenger/lib/screens/delivery_screen.dart
+--- old/passenger/lib/screens/delivery_screen.dart	1970-01-01 00:00:00.000000000 +0000
++++ new/passenger/lib/screens/delivery_screen.dart	2026-10-09 10:16:47.386872999 +0000
+@@ -0,0 +1,274 @@
++import 'dart:async';
++
++import 'package:flutter/material.dart';
++import 'package:flutter_map/flutter_map.dart';
++import 'package:latlong2/latlong.dart';
++import 'package:url_launcher/url_launcher.dart';
++
++import '../models/booking.dart';
++import '../models/operation_stop.dart';
++import '../state/passenger_session.dart';
++import '../theme/app_theme.dart';
++import '../widgets/premium.dart';
++import '../widgets/premium_car_marker.dart';
++import 'chat_screen.dart';
++
++class DeliveryScreen extends StatefulWidget {
++  const DeliveryScreen({super.key, required this.session, required this.bookingId});
++  final PassengerSession session;
++  final int bookingId;
++
++  @override
++  State<DeliveryScreen> createState() => _DeliveryScreenState();
++}
++
++class _DeliveryScreenState extends State<DeliveryScreen> {
++  final map = MapController();
++  Timer? poll;
++
++  PassengerBooking? get booking {
++    for (final item in widget.session.bookings) {
++      if (item.id == widget.bookingId) return item;
++    }
++    return null;
++  }
++
++  @override
++  void initState() {
++    super.initState();
++    widget.session.refreshBooking(widget.bookingId, silent: true);
++    widget.session.refreshTracking(widget.bookingId);
++    poll = Timer.periodic(const Duration(seconds: 2), (_) => unawaited(widget.session.refreshBooking(widget.bookingId, silent: true)));
++  }
++
++  @override
++  void dispose() {
++    poll?.cancel();
++    super.dispose();
++  }
++
++  Future<void> _cancel() async {
++    final yes = await showDialog<bool>(
++          context: context,
++          builder: (context) => AlertDialog(
++            title: const Text('Cancel delivery?'),
++            content: const Text('The driver may already be travelling to the collection point.'),
++            actions: <Widget>[
++              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep delivery')),
++              FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Cancel delivery')),
++            ],
++          ),
++        ) ??
++        false;
++    if (!yes) return;
++    await widget.session.cancel(widget.bookingId);
++  }
++
++  @override
++  Widget build(BuildContext context) => AnimatedBuilder(
++        animation: widget.session,
++        builder: (context, _) {
++          final job = booking;
++          if (job == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
++          final tracking = widget.session.tracking;
++          final driverPoint = tracking?.lat != null && tracking?.lng != null ? LatLng(tracking!.lat!, tracking.lng!) : null;
++          final points = <LatLng>[
++            for (final stop in job.stops)
++              if (stop.lat != null && stop.lng != null) LatLng(stop.lat!, stop.lng!),
++            if (driverPoint != null) driverPoint,
++          ];
++          final center = driverPoint ?? (points.isNotEmpty ? points.first : const LatLng(51.5074, -0.1278));
++          final markers = <Marker>[
++            for (final stop in job.stops)
++              if (stop.lat != null && stop.lng != null)
++                Marker(
++                  point: LatLng(stop.lat!, stop.lng!),
++                  width: 42,
++                  height: 42,
++                  child: _StopMarker(stop: stop),
++                ),
++            if (driverPoint != null)
++              Marker(
++                point: driverPoint,
++                width: 52,
++                height: 56,
++                child: PremiumCarMarker(
++                  headingDegrees: tracking?.heading ?? 0,
++                  size: 40,
++                  accent: tracking?.signal == 'delayed' ? const Color(0xFF6B7280) : AppTheme.ink,
++                  selected: true,
++                  dimmed: tracking?.signal == 'lost',
++                ),
++              ),
++          ];
++          final driver = job.driver;
++          final next = job.nextStop;
++          return Scaffold(
++            body: Stack(children: <Widget>[
++              Positioned.fill(
++                child: FlutterMap(
++                  mapController: map,
++                  options: MapOptions(
++                    initialCenter: center,
++                    initialZoom: 13.5,
++                    initialCameraFit: points.length >= 2 ? CameraFit.bounds(bounds: LatLngBounds.fromPoints(points), padding: const EdgeInsets.all(50)) : null,
++                  ),
++                  children: <Widget>[
++                    TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.gaotus.mobility.passenger'),
++                    MarkerLayer(markers: markers),
++                  ],
++                ),
++              ),
++              Positioned(top: MediaQuery.paddingOf(context).top + 12, left: 16, child: FloatingCircleButton(icon: Icons.arrow_back_rounded, onPressed: () => Navigator.pop(context))),
++              DraggableScrollableSheet(
++                initialChildSize: .58,
++                minChildSize: .42,
++                maxChildSize: .92,
++                snap: true,
++                snapSizes: const <double>[.58, .86],
++                builder: (context, controller) => Container(
++                  decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(30)), boxShadow: <BoxShadow>[BoxShadow(color: Color(0x22000000), blurRadius: 22, offset: Offset(0, -5))]),
++                  child: List
