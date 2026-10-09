@@ -1,0 +1,98 @@
++        durationMinutes: (j['duration_minutes'] as num?)?.toDouble() ?? double.tryParse('${j['duration_minutes']}') ?? 0,
++        breakdown: j['breakdown'] is Map ? Map<String, dynamic>.from(j['breakdown'] as Map) : <String, dynamic>{},
++      );
++}
+diff -ruN '--exclude=.dart_tool' '--exclude=build' passenger060/lib/screens/send_parcel_screen.dart passenger061/lib/screens/send_parcel_screen.dart
+--- passenger060/lib/screens/send_parcel_screen.dart	2026-10-09 15:36:08.000000000 +0000
++++ passenger061/lib/screens/send_parcel_screen.dart	2026-10-09 17:29:21.372150256 +0000
+@@ -1,6 +1,7 @@
+ import 'package:flutter/material.dart';
+ 
+ import '../models/place_selection.dart';
++import '../models/delivery_quote.dart';
+ import '../state/passenger_session.dart';
+ import '../theme/app_theme.dart';
+ import 'delivery_screen.dart';
+@@ -26,6 +27,9 @@
+   final notes = TextEditingController();
+   int packageCount = 1;
+   String packageSize = 'Medium';
++  String serviceLevel = 'standard';
++  DeliveryQuote? deliveryQuote;
++  bool quoteLoading = false;
+   bool locationLoading = true;
+ 
+   @override
+@@ -77,26 +81,21 @@
+     if (d == null || !mounted) return;
+     final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(pickupAt));
+     if (t == null) return;
+-    setState(() => pickupAt = DateTime(d.year, d.month, d.day, t.hour, t.minute));
++    setState(() { pickupAt = DateTime(d.year, d.month, d.day, t.hour, t.minute); deliveryQuote = null; });
+   }
+ 
+-  Future<void> _submit() async {
+-    if (pickup == null || destination == null) {
+-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Choose collection and delivery addresses.')));
+-      return;
+-    }
+-    if (recipientName.text.trim().isEmpty || recipientPhone.text.trim().isEmpty) {
+-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add recipient name and phone number.')));
+-      return;
+-    }
++  Map<String, Object?>? _buildBody({bool requireRecipient = true}) {
++    if (pickup == null || destination == null) return null;
++    if (requireRecipient && (recipientName.text.trim().isEmpty || recipientPhone.text.trim().isEmpty)) return null;
+     String pad(int v) => v.toString().padLeft(2, '0');
+     final identity = widget.session.identity ?? const <String, dynamic>{};
+     final senderName = (identity['name'] ?? identity['display_name'] ?? '').toString();
+     final senderPhone = (identity['phone'] ?? '').toString();
+     final parcelRef = reference.text.trim().isEmpty ? 'GMP-${DateTime.now().millisecondsSinceEpoch}' : reference.text.trim();
+     final packageWeight = double.tryParse(weight.text.trim().replaceAll(',', '.')) ?? 0;
+-    final body = <String, Object?>{
++    return <String, Object?>{
+       'job_type': 'delivery',
++      'service_level': serviceLevel,
+       'pickup_date': '${pickupAt.year}-${pad(pickupAt.month)}-${pad(pickupAt.day)}',
+       'pickup_time': '${pad(pickupAt.hour)}:${pad(pickupAt.minute)}',
+       'payment_method': 'account',
+@@ -134,6 +133,63 @@
+         },
+       ],
+     };
++  }
++
++  void _invalidateQuote() {
++    if (deliveryQuote != null && mounted) setState(() => deliveryQuote = null);
++  }
++
++  Future<DeliveryQuote?> _getQuote() async {
++    if (pickup == null || destination == null) {
++      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Choose collection and delivery addresses.'.tr)));
++      return null;
++    }
++    final body = _buildBody(requireRecipient: false);
++    if (body == null) return null;
++    setState(() => quoteLoading = true);
++    try {
++      final quote = await widget.session.deliveryQuote(body);
++      if (mounted) setState(() => deliveryQuote = quote);
++      return quote;
++    } catch (error) {
++      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
++      return null;
++    } finally {
++      if (mounted) setState(() => quoteLoading = false);
++    }
++  }
++
++  Future<void> _submit() async {
++    if (pickup == null || destination == null) {
++      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Choose collection and delivery addresses.'.tr)));
++      return;
++    }
++    if (recipientName.text.trim().isEmpty || recipientPhone.text.trim().isEmpty) {
++      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Add recipient name and phone number.'.tr)));
++      return;
++    }
++    final quote = deliveryQuote ?? await _getQuote();
