@@ -50,6 +50,7 @@ jobs:
       - name: Apply Passenger v0.6.0 Localization Pack
         run: |
           python3 .localization-pack/patch_localization.py passenger
+          python3 .localization-pack/fix_runtime_const.py passenger
           grep -q 'version: 0.6.0+21' passenger/pubspec.yaml
           grep -q "static const version = '0.6.0';" passenger/lib/config/app_config.dart
           grep -q 'class AppLocalization' passenger/lib/core/localization.dart
