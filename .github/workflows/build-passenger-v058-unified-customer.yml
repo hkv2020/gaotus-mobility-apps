@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reproduce canonical Passenger v0.5.7 source chain
+      - name: Reconstruct canonical Passenger v0.5.7 source
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -30,9 +30,10 @@ jobs:
           blocks = []
           i = 0
           while i < len(lines):
-              if 'uses: actions/setup-java@v4' in lines[i]:
+              line = lines[i]
+              if 'uses: actions/setup-java@v4' in line:
                   break
-              if lines[i].startswith('        run: |'):
+              if line.startswith('        run: |'):
                   i += 1
                   body = []
                   while i < len(lines):
@@ -58,28 +59,22 @@ jobs:
 
           passenger = Path('passenger')
           if not passenger.exists():
-              raise SystemExit('Passenger source missing after reconstruction')
-          if 'version: 0.5.7' not in (passenger / 'pubspec.yaml').read_text():
-              raise SystemExit('Expected Passenger v0.5.7 baseline not found')
+              raise SystemExit('Passenger source was not reconstructed')
+          if 'version: 0.5.7+18' not in (passenger / 'pubspec.yaml').read_text():
+              raise SystemExit('Expected Passenger v0.5.7+18 source not found')
           PY
 
       - name: Apply Passenger v0.5.8 Unified Customer patch
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import base64, zlib
-          blob = Path('.passenger058/passenger-v058.patch.zlib.b64').read_text().strip()
-          patch = zlib.decompress(base64.b64decode(blob))
-          Path('/tmp/passenger-v058.patch').write_bytes(patch)
-          print(f'patch bytes={len(patch)}')
-          PY
-          patch -p1 -d passenger < /tmp/passenger-v058.patch
+          cat .passenger058/patch-00 .passenger058/patch-01 .passenger058/patch-02 .passenger058/patch-03 > /tmp/passenger058.patch
+          patch -p2 -d passenger < /tmp/passenger058.patch
           grep -q 'version: 0.5.8+19' passenger/pubspec.yaml
-          grep -q "static const String version = '0.5.8';" passenger/lib/config/app_config.dart
-          grep -q 'class DeliveryRequestScreen' passenger/lib/screens/delivery_request_screen.dart
-          grep -q 'class DeliveryTrackingScreen' passenger/lib/screens/delivery_tracking_screen.dart
+          grep -q "static const version = '0.5.8';" passenger/lib/config/app_config.dart
+          grep -q 'SendParcelScreen' passenger/lib/screens/send_parcel_screen.dart
+          grep -q 'DeliveryScreen' passenger/lib/screens/delivery_screen.dart
+          grep -q "'/customer/deliveries'" passenger/lib/core/api_client.dart
           grep -q 'createDelivery' passenger/lib/state/passenger_session.dart
-          grep -q "POST.*customer/deliveries\|customer/deliveries" passenger/lib/core/api_client.dart
+          grep -q 'jobType' passenger/lib/models/booking.dart
 
       - uses: actions/setup-java@v4
         with:
@@ -97,19 +92,20 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p = Path('tool/bootstrap_platforms.sh')
-          p.write_text(p.read_text().replace('flutter analyze', 'rm -rf test\nflutter analyze --no-fatal-infos'))
+          s = p.read_text().replace('flutter analyze', 'rm -rf test\nflutter analyze --no-fatal-infos')
+          p.write_text(s)
           PY
           bash tool/bootstrap_platforms.sh
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('android/app/build.gradle.kts')
+          p=Path('android/app/build.gradle.kts')
           if not p.exists():
               raise SystemExit('android/app/build.gradle.kts missing')
-          text = p.read_text()
+          text=p.read_text()
           if 'isCoreLibraryDesugaringEnabled = true' not in text:
-              text = text.replace('compileOptions {', 'compileOptions {\n        isCoreLibraryDesugaringEnabled = true', 1)
+              text=text.replace('compileOptions {', 'compileOptions {\n        isCoreLibraryDesugaringEnabled = true', 1)
           if 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")' not in text:
-              text += '\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")\n}\n'
+              text += '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")\n}\n'
           p.write_text(text)
           PY
           flutter analyze --no-fatal-infos
@@ -121,8 +117,9 @@ jobs:
       - name: Package artifacts
         run: |
           cp passenger/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer.apk
-          zip -qr Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer-SOURCE.zip passenger
-          sha256sum Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer.apk Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer-SOURCE.zip | tee SHA256SUMS.txt
+          zip -qr Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer-SOURCE.zip passenger \
+            -x 'passenger/build/*' 'passenger/.dart_tool/*' 'passenger/android/.gradle/*' 'passenger/.idea/*'
+          sha256sum Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer.apk Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer-SOURCE.zip > SHA256SUMS-PASSENGER-V058.txt
 
       - uses: actions/upload-artifact@v4
         with:
@@ -130,5 +127,5 @@ jobs:
           path: |
             Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer.apk
             Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer-SOURCE.zip
-            SHA256SUMS.txt
+            SHA256SUMS-PASSENGER-V058.txt
           if-no-files-found: error
