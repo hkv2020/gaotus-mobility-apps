@@ -1,1 +1,1181 @@
-PLACEHOLDER
+--- a/lib/config/app_config.dart
++++ b/lib/config/app_config.dart
+@@ -1,6 +1,6 @@
+ final class AppConfig {
+   static const String appName = 'Gaotus Mobility Driver';
+-  static const String version = '0.6.1';
++  static const String version = '0.6.2';
+   static const String namespace = '/wp-json/gaotus-mobility/v1';
+   static const String defaultServer = String.fromEnvironment(
+     'GMP_API_BASE',
+--- a/lib/core/api_client.dart
++++ b/lib/core/api_client.dart
+@@ -4,6 +4,7 @@
+ 
+ import '../config/app_config.dart';
+ import 'api_exception.dart';
++import 'app_locale.dart';
+ 
+ final class ApiClient {
+   ApiClient({required String siteUrl, String? token})
+@@ -76,11 +77,11 @@
+               .timeout(const Duration(seconds: 20));
+           break;
+         default:
+-          throw const ApiException('Unsupported HTTP method.');
++          throw ApiException(AppLocale.tr('Unsupported HTTP method.'));
+       }
+     } catch (error) {
+       if (error is ApiException) rethrow;
+-      throw ApiException('Network error: $error');
++      throw ApiException('${AppLocale.tr('Network error')}: $error');
+     }
+ 
+     if (response.body.isEmpty) {
+--- /dev/null
++++ b/lib/core/app_locale.dart
+@@ -0,0 +1,265 @@
++import 'package:flutter/foundation.dart';
++import 'package:flutter/material.dart';
++
++import 'country_config.dart';
++
++/// Runtime UI localization driven by the Country Pack returned by
++/// Gaotus Mobility Platform. Before the first server profile is loaded we use
++/// the device language as a friendly fallback, but the Platform remains the
++/// source of truth once CountryConfig.configure() has run.
++final class AppLocale {
++  AppLocale._();
++
++  static String get languageCode {
++    if (CountryConfig.configured) return CountryConfig.language;
++    final device = PlatformDispatcher.instance.locale.languageCode.toLowerCase();
++    return device == 'ro' ? 'ro' : 'en';
++  }
++
++  static bool get isRo => languageCode == 'ro';
++
++  static const Map<String, String> _ro = <String, String>{
++    'Driver': 'Șofer',
++    'Job requests': 'Cereri de job',
++    'Nearby ride, delivery and collection job requests': 'Cereri de curse, livrări și colectări din apropiere',
++    'Driver messages': 'Mesaje șofer',
++    'Customer and dispatch job messages': 'Mesaje de la clienți și dispecerat',
++    'New job message': 'Mesaj nou pentru job',
++    'Open the job chat to read the message.': 'Deschide chatul jobului pentru a citi mesajul.',
++    'Startup recovery': 'Recuperare la pornire',
++    'Connected session; live sync is retrying': 'Sesiune conectată; sincronizarea live se reîncearcă',
++    'Signed in. Driver data sync is retrying': 'Autentificat. Sincronizarea datelor șoferului se reîncearcă',
++    'Invalid chat response.': 'Răspuns chat invalid.',
++    'Job': 'Job',
++    'You': 'Tu',
++    'Current': 'Curent',
++    'support': 'suport',
++    'Tap a connected section': 'Deschide o secțiune conectată',
++    'Chat': 'Chat',
++    'Could not update stop.': 'Oprirea nu a putut fi actualizată.',
++    'Customer unavailable, access issue…': 'Client indisponibil, problemă de acces…',
++    'Next': 'Următor',
++    'Window': 'Interval',
++    'Take proof photo': 'Fă fotografie dovadă',
++    'Retake photo': 'Refă fotografia',
++    'PIN': 'PIN',
++    'Barcode / ref': 'Cod de bare / ref.',
++    'Save to Platform': 'Salvează în Platformă',
++    'Vehicle assignment and compliance are controlled by your operator in Gaotus Mobility Platform.': 'Alocarea vehiculului și conformitatea sunt controlate de operator în Gaotus Mobility Platform.',
++    'Use the contact methods configured by your operator. These details come directly from Gaotus Mobility Platform.': 'Folosește metodele de contact configurate de operator. Aceste date vin direct din Gaotus Mobility Platform.',
++    'Operating-system notification permissions are still controlled by Android or iOS. These settings control the Gaotus Driver app behaviour.': 'Permisiunile de notificare sunt controlate în continuare de Android sau iOS. Aceste setări controlează comportamentul aplicației Gaotus Driver.',
++    'Could not update availability.': 'Disponibilitatea nu a putut fi actualizată.',
++    'Could not accept trip.': 'Cursa nu a putut fi acceptată.',
++    'Could not decline trip.': 'Cursa nu a putut fi refuzată.',
++    'Add trip extra': 'Adaugă extra',
++    'Description': 'Descriere',
++    'Parking, toll, cleaning…': 'Parcare, taxă, curățenie…',
++    'Qty': 'Cant.',
++    'Unit amount': 'Valoare unitară',
++    'Add': 'Adaugă',
++    'Could not add extra.': 'Extra-ul nu a putut fi adăugat.',
++    'Remove extra?': 'Ștergi extra-ul?',
++    'Keep': 'Păstrează',
++    'Remove': 'Șterge',
++    'Could not remove extra.': 'Extra-ul nu a putut fi șters.',
++    'Complete trip?': 'Finalizezi cursa?',
++    'Not yet': 'Nu încă',
++    'Complete': 'Finalizează',
++    'Could not complete trip.': 'Cursa nu a putut fi finalizată.',
++    'Done': 'Gata',
++    'Current trip': 'Cursa curentă',
++    'Call': 'Sună',
++    'Message passenger': 'Mesaj pasager',
++    'Flight': 'Zbor',
++    'Notes': 'Notițe',
++    'Complete trip': 'Finalizează cursa',
++    'customer fare': 'tarif client',
++    'Trip extras': 'Extra-uri cursă',
++    'No extras added. Automatic waiting time will appear here when applicable.': 'Nu există extra-uri. Timpul de așteptare automat va apărea aici când este cazul.',
++    'Extras total': 'Total extra-uri',
++    'Add extra': 'Adaugă extra',
++    'Could not update trip.': 'Cursa nu a putut fi actualizată.',
++    'Could not load earnings.': 'Câștigurile nu au putut fi încărcate.',
++    'Completed trips': 'Curse finalizate',
++    'Message passenger…': 'Mesaj către pasager…',
++    'Home': 'Acasă',
++    'Jobs': 'Joburi',
++    'Earnings': 'Câștiguri',
++    'Menu': 'Meniu',
++    'Help': 'Ajutor',
++    'Safety': 'Siguranță',
++    'Settings': 'Setări',
++    'Profile': 'Profil',
++    'Vehicle': 'Vehicul',
++    'Documents': 'Documente',
++    'Notifications': 'Notificări',
++    'Connection': 'Conexiune',
++    'Realtime': 'Timp real',
++    'GPS': 'GPS',
++    'Push': 'Push',
++    'Driver ID': 'ID șofer',
++    'Platform': 'Platformă',
++    'App': 'Aplicație',
++    'Connected': 'Conectat',
++    'REST fallback': 'Fallback REST',
++    'Fallback polling': 'Interogare fallback',
++    'Active': 'Activ',
++    'Stopped': 'Oprit',
++    'Ready': 'Pregătit',
++    'Not ready': 'Nepregătit',
++    'Yes': 'Da',
++    'No': 'Nu',
++    'Sign out': 'Deconectare',
++    'Refresh': 'Reîmprospătează',
++    'Retry': 'Reîncearcă',
++    'Driver profile': 'Profil șofer',
++    'Driver documents': 'Documente șofer',
++    'Vehicle documents': 'Documente vehicul',
++    'Vehicle assignment': 'Alocare vehicul',
++    'View document': 'Vezi documentul',
++    'Operator support': 'Suport operator',
++    'Call support': 'Sună suportul',
++    'WhatsApp support': 'Suport WhatsApp',
++    'Email support': 'Suport email',
++    'Help centre': 'Centru de ajutor',
++    'Current context': 'Context curent',
++    'Call operator / safety desk': 'Sună operatorul / siguranța',
++    'Call emergency services': 'Sună serviciile de urgență',
++    'Driver settings': 'Setări șofer',
++    'Preferred navigation': 'Navigație preferată',
++    'Haptic feedback': 'Feedback haptic',
++    'Vibrate on important job actions': 'Vibrează la acțiunile importante',
++    'In-app job sound': 'Sunet job în aplicație',
++    'Play the foreground alert when a new job arrives': 'Redă alerta când sosește un job nou',
++    'In-app chat sound': 'Sunet chat în aplicație',
++    'Play the foreground alert for new job messages': 'Redă alerta pentru mesaje noi',
++    'Save settings': 'Salvează setările',
++    'No Platform data recorded yet.': 'Nu există încă date din Platformă.',
++    'Platform data is not available yet.': 'Datele Platformei nu sunt încă disponibile.',
++    'Pull to retry after the Platform is updated.': 'Trage pentru reîncercare după actualizarea Platformei.',
++    'Could not open this action.': 'Acțiunea nu a putut fi deschisă.',
++    'Could not open navigation.': 'Navigația nu a putut fi deschisă.',
++    'Could not open the phone app.': 'Aplicația de telefon nu a putut fi deschisă.',
++    'Could not save settings.': 'Setările nu au putut fi salvate.',
++    'Driver settings saved to Platform.': 'Setările șoferului au fost salvate în Platformă.',
++    'WordPress site URL': 'URL site WordPress',
++    'Email or username': 'Email sau utilizator',
++    'Password': 'Parolă',
++    'SIGN IN AS DRIVER': 'AUTENTIFICARE ȘOFER',
++    'SIGNING IN…': 'SE AUTENTIFICĂ…',
++    'Passenger chat': 'Chat pasager',
++    'No messages yet.': 'Nu există mesaje încă.',
++    'Message': 'Mesaj',
++    'Send': 'Trimite',
++    'Online': 'Online',
++    'Offline': 'Offline',
++    'Manage': 'Administrare',
++    'Contact and licence details from Platform': 'Date de contact și licență din Platformă',
++    'Assignment and compliance from Platform': 'Alocare și conformitate din Platformă',
++    'Compliance status, expiry and document files': 'Status conformitate, expirare și documente',
++    'Push notifications ready': 'Notificările push sunt pregătite',
++    'Push diagnostics available': 'Diagnostic push disponibil',
++    'Connection diagnostics': 'Diagnostic conexiune',
++    'Push available': 'Push disponibil',
++    'Push registered': 'Push înregistrat',
++    'Server configured': 'Server configurat',
++    'Nearby jobs': 'Joburi în apropiere',
++    'No new nearby jobs': 'Nu sunt joburi noi în apropiere',
++    'Current ride': 'Cursa curentă',
++    'Open active job': 'Deschide jobul activ',
++    'Refresh jobs': 'Reîmprospătează joburile',
++    'OPEN': 'DESCHIDE',
++    'GPS live': 'GPS live',
++    'Finding GPS…': 'Se caută GPS…',
++    'Go offline': 'Treci offline',
++    'Go online': 'Treci online',
++    'New passenger message': 'Mesaj nou de la pasager',
++    'New trip request': 'Cerere nouă de cursă',
++    'trip total': 'total cursă',
++    'job value': 'valoare job',
++    'Pick-up': 'Preluare',
++    'Start': 'Pornire',
++    'Destination': 'Destinație',
++    'Finish': 'Final',
++    'Decline': 'Refuză',
++    'Accept trip': 'Acceptă cursa',
++    'Accept': 'Acceptă',
++    'Address not provided': 'Adresă necompletată',
++    'Address unavailable': 'Adresă indisponibilă',
++    'Navigate': 'Navighează',
++    'Passenger': 'Pasager',
++    'I’ve arrived': 'Am ajuns',
++    'Passenger on board': 'Pasager la bord',
++    'Cancel': 'Anulează',
++    'No active trip.': 'Nu există cursă activă.',
++    'Operations job': 'Job operațional',
++    'No active operations job.': 'Nu există job operațional activ.',
++    'Route stops': 'Opriri pe rută',
++    'Complete with proof': 'Finalizează cu dovadă',
++    'Failed': 'Eșuat',
++    'Postpone': 'Amână',
++    'Reason': 'Motiv',
++    'Save': 'Salvează',
++    'Proof of completion': 'Dovadă de finalizare',
++    'Recipient name': 'Nume destinatar',
++    'Packages handed over': 'Colete predate',
++    'Signature': 'Semnătură',
++    'Clear': 'Șterge',
++    'Driver note': 'Notă șofer',
++    'Save proof & complete stop': 'Salvează dovada și finalizează oprirea',
++    'All route stops are closed': 'Toate opririle rutei sunt închise',
++    'The platform is finalising this operations job.': 'Platforma finalizează acest job operațional.',
++    'Operations job completed.': 'Jobul operațional a fost finalizat.',
++    'Take a proof photo before completing this stop.': 'Fă o fotografie dovadă înainte de finalizarea opririi.',
++    'Recipient name is required.': 'Numele destinatarului este obligatoriu.',
++    'Confirmation PIN is required.': 'PIN-ul de confirmare este obligatoriu.',
++    'Barcode / reference is required.': 'Codul de bare / referința este obligatorie.',
++    'Recipient signature is required.': 'Semnătura destinatarului este obligatorie.',
++    'Not connected.': 'Neconectat.',
++    'Enter the WordPress site URL.': 'Introdu URL-ul site-ului WordPress.',
++    'This account is not linked to a driver profile.': 'Acest cont nu este asociat unui profil de șofer.',
++    'Server did not return a valid driver token.': 'Serverul nu a returnat un token valid de șofer.',
++    'Passenger On Board is required before completion.': 'Pasagerul trebuie marcat la bord înainte de finalizare.',
++    'Unsupported HTTP method.': 'Metodă HTTP nesuportată.',
++    'Network error': 'Eroare de rețea',
++    'Your share': 'Partea ta',
++    'Company': 'Companie',
++    'Customer fare': 'Tarif client',
++    'No completed trips in this period.': 'Nu există curse finalizate în această perioadă.',
++    'Trip': 'Cursă',
++    'Number': 'Număr',
++    'Expiry': 'Expirare',
++    'Compliance': 'Conformitate',
++    'Google Maps': 'Google Maps',
++    'Waze': 'Waze',
++    'Ride': 'Cursă',
++    'Delivery': 'Livrare',
++    'Collection': 'Colectare',
++    'Service': 'Serviciu',
++    'Multi-stop': 'Multi-stop',
++    'Pickup / delivery': 'Preluare / livrare',
++    'Pending': 'În așteptare',
++    'Offered': 'Oferit',
++    'Assigned': 'Alocat',
++    'Enroute': 'În drum',
++    'Arrived': 'Ajuns',
++    'Completed': 'Finalizat',
++    'Postponed': 'Amânat',
++    'Cancelled': 'Anulat',
++    'Rejected': 'Respins',
++    'stop': 'oprirea',
++    'sec': 'sec',
++    'There are no trip extras to charge.': 'Nu există extra-uri de cursă de încasat.',
++    'The saved payment method will be attempted; otherwise the customer receives an invoice.': 'Se va încerca metoda de plată salvată; în caz contrar clientul primește o factură.',
++    'This will close trip': 'Aceasta va închide cursa',
++    'and make you available again.': 'și vei deveni din nou disponibil.',
++  };
++
++  static String tr(String english) => isRo ? (_ro[english] ?? english) : english;
++
++  static String status(String value) {
++    final normalized = value.trim().toLowerCase();
++    final english = switch (normalized) {
++      'pending' => 'Pending',
++      'offered' => 'Offered',
++      'assigned' => 'Assigned',
++      'enroute' => 'Enroute',
++      'arrived' => 'Arrived',
++      'pob' => 'Passenger on board',
++      'completed' => 'Completed',
++      'failed' => 'Failed',
++      'postponed' => 'Postponed',
++      'cancelled' => 'Cancelled',
++      'rejected' => 'Rejected',
++      'online' => 'Online',
++      'offline' => 'Offline',
++      _ => value,
++    };
++    return tr(english);
++  }
++
++  static String jobType(String value) {
++    final normalized = value.trim().toLowerCase();
++    return tr(switch (normalized) {
++      'delivery' => 'Delivery',
++      'collection' => 'Collection',
++      'service' => 'Service',
++      'multi_stop' => 'Multi-stop',
++      _ => 'Ride',
++    });
++  }
++
++  static String operation(String value) {
++    final normalized = value.trim().toLowerCase();
++    return tr(switch (normalized) {
++      'pickup' => 'Collection',
++      'delivery' => 'Delivery',
++      'pickup_delivery' => 'Pickup / delivery',
++      'passenger' => 'Passenger',
++      _ => 'Service',
++    });
++  }
++
++  static String countLabel(int value, String oneEn, String manyEn, String oneRo, String manyRo) {
++    if (isRo) return '$value ${value == 1 ? oneRo : manyRo}';
++    return '$value ${value == 1 ? oneEn : manyEn}';
++  }
++
++  static Locale get locale => isRo ? const Locale('ro', 'RO') : const Locale('en', 'GB');
++}
++
++class LText extends StatelessWidget {
++  const LText(
++    this.english, {
++    super.key,
++    this.style,
++    this.textAlign,
++    this.maxLines,
++    this.overflow,
++    this.softWrap,
++  });
++
++  final String english;
++  final TextStyle? style;
++  final TextAlign? textAlign;
++  final int? maxLines;
++  final TextOverflow? overflow;
++  final bool? softWrap;
++
++  @override
++  Widget build(BuildContext context) => Text(
++        AppLocale.tr(english),
++        style: style,
++        textAlign: textAlign,
++        maxLines: maxLines,
++        overflow: overflow,
++        softWrap: softWrap,
++      );
++}
+--- a/lib/core/country_config.dart
++++ b/lib/core/country_config.dart
+@@ -7,6 +7,8 @@
+   static String timezone = 'Europe/London';
+   static String phonePrefix = '+44';
+   static String units = 'imperial';
++  static String language = 'en';
++  static bool configured = false;
+ 
+   static void configure(Map<String, dynamic>? raw) {
+     if (raw == null || raw.isEmpty) return;
+@@ -20,6 +22,9 @@
+     timezone = (raw['timezone'] ?? timezone).toString();
+     phonePrefix = (raw['phone_prefix'] ?? phonePrefix).toString();
+     units = (raw['unit_system'] ?? raw['units'] ?? units).toString();
++    final nextLanguage=(raw['language'] ?? '').toString().trim().toLowerCase();
++    language=nextLanguage=='ro'?'ro':(nextLanguage=='en'?'en':(locale.toLowerCase().startsWith('ro')||code=='RO'?'ro':'en'));
++    configured=true;
+   }
+ 
+   static String symbolFor(String currencyCode) {
+@@ -34,6 +39,12 @@
+     }
+   }
+ 
++  static void reset() {
++    code='GB'; currency='GBP'; symbol='£'; locale='en_GB';
++    timezone='Europe/London'; phonePrefix='+44'; units='imperial';
++    language='en'; configured=false;
++  }
++
+   static String money(num value, {String? currencyCode}) {
+     final cur = (currencyCode == null || currencyCode.trim().isEmpty ? currency : currencyCode).toUpperCase();
+     final amount = value.toStringAsFixed(2);
+--- a/lib/main.dart
++++ b/lib/main.dart
+@@ -1,8 +1,10 @@
+ import 'dart:async';
+ 
+ import 'package:flutter/material.dart';
++import 'package:flutter_localizations/flutter_localizations.dart';
+ import 'package:flutter/services.dart';
+ 
++import 'core/app_locale.dart';
+ import 'screens/driver_home_screen.dart';
+ import 'screens/login_screen.dart';
+ import 'state/app_session.dart';
+@@ -24,16 +26,23 @@
+   final AppSession session;
+ 
+   @override
+-  Widget build(BuildContext context) => MaterialApp(
+-        title: 'Gaotus Mobility Driver',
+-        debugShowCheckedModeBanner: false,
+-        theme: DriverTheme.light(),
+-        home: session.booting
+-            ? const _BootScreen()
+-            : session.authenticated
+-                ? DriverHomeScreen(session: session)
+-                : LoginScreen(session: session),
++  Widget build(BuildContext context) => AnimatedBuilder(
++        animation: session,
++        builder: (_, __) => MaterialApp(
++          title: 'Gaotus Mobility Driver',
++          debugShowCheckedModeBanner: false,
++          locale: AppLocale.locale,
++          supportedLocales: const <Locale>[Locale('en', 'GB'), Locale('ro', 'RO')],
++          localizationsDelegates: GlobalMaterialLocalizations.delegates,
++          theme: DriverTheme.light(),
++          home: session.booting
++              ? const _BootScreen()
++              : session.authenticated
++                  ? DriverHomeScreen(session: session)
++                  : LoginScreen(session: session),
++        ),
+       );
+ }
+ 
+--- a/lib/screens/chat_screen.dart
++++ b/lib/screens/chat_screen.dart
+@@ -2,6 +2,7 @@
+ import '../state/app_session.dart';
+ import '../models/chat_message.dart';
+ import '../theme/driver_theme.dart';
++import '../core/app_locale.dart';
+ 
+ class ChatScreen extends StatefulWidget{
+   const ChatScreen({super.key,required this.session,required this.bookingId});
+@@ -21,12 +22,12 @@
+   @override void dispose(){_timer?.cancel();_controller.dispose();super.dispose();}
+   @override Widget build(BuildContext context){
+     return Scaffold(
+-      appBar:AppBar(title:const Text('Passenger chat')),
++      appBar:AppBar(title:const LText('Passenger chat')),
+       body:Column(children:<Widget>[
+-        Expanded(child:_loading&&_messages.isEmpty?const Center(child:CircularProgressIndicator()):_messages.isEmpty?Center(child:Text(_error??'No messages yet.')):ListView.builder(controller:_scroll,padding:const EdgeInsets.all(14),itemCount:_messages.length,itemBuilder:(context,index){final m=_messages[index];return _Bubble(message:m);})),
++        Expanded(child:_loading&&_messages.isEmpty?const Center(child:CircularProgressIndicator()):_messages.isEmpty?Center(child:Text(_error??AppLocale.tr('No messages yet.'))):ListView.builder(controller:_scroll,padding:const EdgeInsets.all(14),itemCount:_messages.length,itemBuilder:(context,index){final m=_messages[index];return _Bubble(message:m);})),
+         SafeArea(top:false,child:Padding(padding:const EdgeInsets.fromLTRB(10,8,10,10),child:Row(children:<Widget>[
+-          Expanded(child:TextField(controller:_controller,textInputAction:TextInputAction.send,onSubmitted:(_)=>_send(),decoration:const InputDecoration(hintText:'Message'))),
+-          const SizedBox(width:8),IconButton.filled(onPressed:_sending?null:_send,icon:_sending?const SizedBox.square(dimension:18,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.send_rounded),tooltip:'Send'),
++          Expanded(child:TextField(controller:_controller,textInputAction:TextInputAction.send,onSubmitted:(_)=>_send(),decoration:InputDecoration(hintText:AppLocale.tr('Message')))),
++          const SizedBox(width:8),IconButton.filled(onPressed:_sending?null:_send,icon:_sending?const SizedBox.square(dimension:18,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.send_rounded),tooltip:AppLocale.tr('Send')),
+         ]))),
+       ]),
+     );
+@@ -38,7 +39,7 @@
+       padding:const EdgeInsets.symmetric(horizontal:14,vertical:10),
+       decoration:BoxDecoration(color:mine?Colors.black:Colors.white,borderRadius:BorderRadius.circular(18),border:mine?null:Border.all(color:const Color(0xFFE5E5E5))),
+       child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:<Widget>[
+-        Text(mine?'You':(message.senderName.isEmpty?'Passenger':message.senderName),style:TextStyle(fontSize:11,fontWeight:FontWeight.w800,color:mine?Colors.white70:const Color(0xFF666666))),
++        Text(mine?AppLocale.tr('You'):(message.senderName.isEmpty?AppLocale.tr('Passenger'):message.senderName),style:TextStyle(fontSize:11,fontWeight:FontWeight.w800,color:mine?Colors.white70:const Color(0xFF666666))),
+         const SizedBox(height:4),Text(message.message,style:TextStyle(color:mine?Colors.white:Colors.black,height:1.35)),
+       ]),
+     );
+--- a/lib/screens/driver_home_screen.dart
++++ b/lib/screens/driver_home_screen.dart
+@@ -6,6 +6,7 @@
+ import '../screens/driver_menu_screen.dart';
+ import '../screens/job_screen.dart';
+ import '../screens/nearby_jobs_screen.dart';
++import '../core/app_locale.dart';
+ 
+ class DriverHomeScreen extends StatefulWidget {
+   const DriverHomeScreen({super.key, required this.session});
+@@ -21,7 +22,7 @@
+   @override
+   Widget build(BuildContext context) {
+     final titles = <String>[
+-      'Home', 'Jobs', 'Earnings', 'Menu',
++      AppLocale.tr('Home'), AppLocale.tr('Jobs'), AppLocale.tr('Earnings'), AppLocale.tr('Menu'),
+     ];
+     return AnimatedBuilder(
+       animation: widget.session,
+@@ -42,10 +43,10 @@
+           bottomNavigationBar: NavigationBar(
+             selectedIndex: _index,
+             onDestinationSelected: (v) => setState(() => _index = v),
+-            destinations: const <NavigationDestination>[
+-              NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Home'),
+-              NavigationDestination(icon: Icon(Icons.work_outline_rounded), selectedIcon: Icon(Icons.work_rounded), label: 'Jobs'),
+-              NavigationDestination(icon: Icon(Icons.account_balance_wallet_outlined), selectedIcon: Icon(Icons.account_balance_wallet_rounded), label: 'Earnings'),
+-              NavigationDestination(icon: Icon(Icons.grid_view_rounded), selectedIcon: Icon(Icons.grid_view_rounded), label: 'Menu'),
++            destinations: <NavigationDestination>[
++              NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home_rounded), label: AppLocale.tr('Home')),
++              NavigationDestination(icon: const Icon(Icons.work_outline_rounded), selectedIcon: const Icon(Icons.work_rounded), label: AppLocale.tr('Jobs')),
++              NavigationDestination(icon: const Icon(Icons.account_balance_wallet_outlined), selectedIcon: const Icon(Icons.account_balance_wallet_rounded), label: AppLocale.tr('Earnings')),
++              NavigationDestination(icon: const Icon(Icons.grid_view_rounded), selectedIcon: const Icon(Icons.grid_view_rounded), label: AppLocale.tr('Menu')),
+             ],
+           ),
+         );
+--- a/lib/screens/driver_hub_screens.dart
++++ b/lib/screens/driver_hub_screens.dart
+@@ -4,6 +4,7 @@
+ import '../core/country_config.dart';
+ import '../theme/driver_theme.dart';
+ import '../state/app_session.dart';
++import '../core/app_locale.dart';
+ 
+ Future<void> _launch(BuildContext context, Uri uri) async {
+   try {
+@@ -11,7 +12,7 @@
+     if (ok) return;
+   } catch (_) {}
+   if (context.mounted) {
+-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open this action.')));
++    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: LText('Could not open this action.')));
+   }
+ }
+ 
+@@ -59,13 +60,13 @@
+       crossAxisAlignment: CrossAxisAlignment.start,
+       children: <Widget>[
+         Row(children: <Widget>[
+-          Expanded(child: Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900))),
++          Expanded(child: Text(AppLocale.tr(title), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900))),
+           if (trailing != null) trailing!,
+         ]),
+         const SizedBox(height: 4),
+-        Text(subtitle, style: const TextStyle(color: Color(0xFF606772), height: 1.35)),
++        Text(AppLocale.tr(subtitle), style: const TextStyle(color: Color(0xFF606772), height: 1.35)),
+         const SizedBox(height: 14),
+         child,
+       ],
+@@ -106,7 +107,7 @@
+               mainAxisAlignment: MainAxisAlignment.center,
+               children: <Widget>[
+                 const Icon(Icons.cloud_off_rounded, size: 48),
+                 const SizedBox(height: 12),
+-                const Text('Platform data is not available yet.', textAlign: TextAlign.center, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
++                const LText('Platform data is not available yet.', textAlign: TextAlign.center, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
+                 if ((s.errorMessage ?? '').isNotEmpty) ...<Widget>[
+                   const SizedBox(height: 8),
+                   Text(s.errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF606772))),
+@@ -114,7 +115,7 @@
+                 const SizedBox(height: 14),
+                 FilledButton.icon(
+                   onPressed: s.busy ? null : s.refreshDriverHub,
+                   icon: const Icon(Icons.refresh_rounded),
+-                  label: const Text('Retry'),
++                  label: const LText('Retry'),
+                 ),
+               ],
+             ),
+@@ -135,10 +136,10 @@
+     final documents = s.driverDocuments;
+     return _HubCard(
+       icon: Icons.person_rounded,
+-      title: 'Driver profile',
+-      subtitle: 'Contact and licence details from Platform',
++      title: AppLocale.tr('Driver profile'),
++      subtitle: AppLocale.tr('Contact and licence details from Platform'),
+       child: Column(children: <Widget>[
+-        _line('Name', name),
+-        _line('Phone', phone),
+-        _line('Email', email),
++        _line(AppLocale.tr('Name'), name),
++        _line(AppLocale.tr('Phone'), phone),
++        _line(AppLocale.tr('Email'), email),
+         _line('Licence', licence),
+         _line('Licence expiry', licenceExpiry),
+         _line('Driver ID', '${s.driverId ?? 0}'),
+@@ -170,8 +171,8 @@
+     final plate = (vehicle['registration'] ?? vehicle['plate'] ?? '').toString();
+     return _HubCard(
+       icon: Icons.directions_car_rounded,
+-      title: 'Vehicle assignment',
+-      subtitle: 'Assignment and compliance from Platform',
++      title: AppLocale.tr('Vehicle assignment'),
++      subtitle: AppLocale.tr('Assignment and compliance from Platform'),
+       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+         if (vehicle.isEmpty)
+           const Text('No vehicle is assigned right now.')
+@@ -201,7 +202,7 @@
+               if (year.isNotEmpty) _line('Year', year),
+             ],
+           ),
+         const SizedBox(height: 10),
+-        const Text('Vehicle assignment and compliance are controlled by your operator in Gaotus Mobility Platform.', style: TextStyle(color: Color(0xFF606772), height: 1.4)),
++        const LText('Vehicle assignment and compliance are controlled by your operator in Gaotus Mobility Platform.', style: TextStyle(color: Color(0xFF606772), height: 1.4)),
+       ]),
+     );
+   }
+@@ -216,10 +217,10 @@
+     final vehicleDocs = docs['vehicle'] is List ? List<Map<String, dynamic>>.from((docs['vehicle'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : <Map<String, dynamic>>[];
+     return _HubCard(
+       icon: Icons.folder_copy_rounded,
+-      title: 'Documents',
+-      subtitle: 'Compliance status, expiry and document files',
++      title: AppLocale.tr('Documents'),
++      subtitle: AppLocale.tr('Compliance status, expiry and document files'),
+       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+-        const Text('Driver documents', style: TextStyle(fontWeight: FontWeight.w900)),
++        const LText('Driver documents', style: TextStyle(fontWeight: FontWeight.w900)),
+         const SizedBox(height: 8),
+         if (driverDocs.isEmpty) const Text('No driver documents returned by Platform.') else ...driverDocs.map((d) => _DocumentTile(document: d)),
+         const SizedBox(height: 16),
+-        const Text('Vehicle documents', style: TextStyle(fontWeight: FontWeight.w900)),
++        const LText('Vehicle documents', style: TextStyle(fontWeight: FontWeight.w900)),
+         const SizedBox(height: 8),
+         if (vehicleDocs.isEmpty) const Text('No vehicle documents returned by Platform.') else ...vehicleDocs.map((d) => _DocumentTile(document: d)),
+       ]),
+@@ -270,7 +271,7 @@
+     final fileUrl = (document['file_url'] ?? '').toString();
+     final ok = status == 'valid' || status == 'approved' || status == 'ok';
+     return Container(
+       margin: const EdgeInsets.only(bottom: 8),
+@@ -287,13 +288,13 @@
+               Text(type, style: const TextStyle(fontWeight: FontWeight.w900)),
+               const SizedBox(height: 3),
+               Text(status.isEmpty ? 'Status unavailable' : status, style: const TextStyle(color: Color(0xFF606772))),
+-              if (number.isNotEmpty) ...<Widget>[const SizedBox(height: 8), Text('Number: $number')],
+-              if (expiry.isNotEmpty) ...<Widget>[const SizedBox(height: 4), Text('Expiry: $expiry')],
++              if (number.isNotEmpty) ...<Widget>[const SizedBox(height: 8), Text('${AppLocale.tr('Number')}: $number')],
++              if (expiry.isNotEmpty) ...<Widget>[const SizedBox(height: 4), Text('${AppLocale.tr('Expiry')}: $expiry')],
+             ],
+           )),
+           if (fileUrl.isNotEmpty)
+-            OutlinedButton.icon(onPressed: () => _launch(context, Uri.parse(fileUrl)), icon: const Icon(Icons.open_in_new_rounded), label: const Text('View document')),
++            OutlinedButton.icon(onPressed: () => _launch(context, Uri.parse(fileUrl)), icon: const Icon(Icons.open_in_new_rounded), label: const LText('View document')),
+         ],
+       ),
+     );
+@@ -313,17 +314,17 @@
+     final email = (support['email'] ?? '').toString();
+     return _HubCard(
+       icon: Icons.support_agent_rounded,
+-      title: 'Help & support',
+-      subtitle: 'Contact your operator from the driver app',
++      title: AppLocale.tr('Help & support'),
++      subtitle: AppLocale.tr('Contact your operator from the driver app'),
+       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+         Row(children: <Widget>[
+           const CircleAvatar(radius: 24, backgroundColor: Colors.black, foregroundColor: Colors.white, child: Icon(Icons.headset_mic_rounded)),
+           const SizedBox(width: 12),
+           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+-            Text(company.isEmpty ? 'Operator support' : '$company support', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
++            Text(company.isEmpty ? AppLocale.tr('Operator support') : '$company ${AppLocale.tr('support')}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+             const SizedBox(height: 4),
+-            const Text('Use the contact methods configured by your operator. These details come directly from Gaotus Mobility Platform.', style: TextStyle(color: Color(0xFF606772), height: 1.4)),
++            const LText('Use the contact methods configured by your operator. These details come directly from Gaotus Mobility Platform.', style: TextStyle(color: Color(0xFF606772), height: 1.4)),
+           ])),
+         ]),
+         const SizedBox(height: 14),
+@@ -365,9 +366,9 @@
+ class DriverSafetyScreen extends StatelessWidget {
+   const DriverSafetyScreen({super.key, required this.session});
+   final AppSession session;
+ 
+   @override
+-  Widget build(BuildContext context) => _HubScaffold(session: session, title: 'Safety', subtitle: 'Emergency actions and your current job context', childBuilder: (context, s) {
++  Widget build(BuildContext context) => _HubScaffold(session: session, title: AppLocale.tr('Safety'), subtitle: AppLocale.tr('Emergency actions and your current job context'), childBuilder: (context, s) {
+     final active = s.activeJob ?? s.currentOperationsJob;
+     final summary = active == null ? 'No active job' : '#${active.id} · ${active.pickup} → ${active.destination}';
+     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+@@ -414,12 +415,12 @@
+       'navigation_app': _navigation,
+       'haptic_feedback': _haptics,
+       'job_sound': _jobSound,
+       'chat_sound': _chatSound,
+     });
+     setState(() => _saving = false);
+     if (!mounted) return;
+-    if (ok) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Driver settings saved to Platform.')));
++    if (ok) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: LText('Driver settings saved to Platform.')));
+     else ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.session.errorMessage ?? 'Could not save settings.')));
+   }
+@@ -432,7 +433,7 @@
+   @override
+   Widget build(BuildContext context) => Scaffold(
+-        appBar: AppBar(title: const Text('Settings', style: TextStyle(fontWeight: FontWeight.w900))),
++        appBar: AppBar(title: const LText('Settings', style: TextStyle(fontWeight: FontWeight.w900))),
+         body: ListView(
+           padding: const EdgeInsets.all(18),
+           children: <Widget>[
+@@ -444,19 +445,19 @@
+               crossAxisAlignment: CrossAxisAlignment.stretch,
+               children: <Widget>[
+                 DropdownButtonFormField<String>(
+                   initialValue: _navigation,
+-                  decoration: const InputDecoration(labelText: 'Preferred navigation', border: OutlineInputBorder()),
++                  decoration: const InputDecoration(label: const LText('Preferred navigation'), border: OutlineInputBorder()),
+                   items: const <DropdownMenuItem<String>>[
+                     DropdownMenuItem(value: 'google', child: Text('Google Maps')),
+                     DropdownMenuItem(value: 'waze', child: Text('Waze')),
+                   ],
+                   onChanged: _saving ? null : (value) => setState(() => _navigation = value ?? 'google'),
+                 ),
+                 const SizedBox(height: 12),
+-                SwitchListTile.adaptive(contentPadding: EdgeInsets.zero, title: const Text('Haptic feedback'), subtitle: const Text('Vibrate on important job actions'), value: _haptics, onChanged: _saving ? null : (value) => setState(() => _haptics = value)),
+-                SwitchListTile.adaptive(contentPadding: EdgeInsets.zero, title: const Text('In-app job sound'), subtitle: const Text('Play the foreground alert when a new job arrives'), value: _jobSound, onChanged: _saving ? null : (value) => setState(() => _jobSound = value)),
+-                SwitchListTile.adaptive(contentPadding: EdgeInsets.zero, title: const Text('In-app chat sound'), subtitle: const Text('Play the foreground alert for new job messages'), value: _chatSound, onChanged: _saving ? null : (value) => setState(() => _chatSound = value)),
++                SwitchListTile.adaptive(contentPadding: EdgeInsets.zero, title: const LText('Haptic feedback'), subtitle: const LText('Vibrate on important job actions'), value: _haptics, onChanged: _saving ? null : (value) => setState(() => _haptics = value)),
++                SwitchListTile.adaptive(contentPadding: EdgeInsets.zero, title: const LText('In-app job sound'), subtitle: const LText('Play the foreground alert when a new job arrives'), value: _jobSound, onChanged: _saving ? null : (value) => setState(() => _jobSound = value)),
++                SwitchListTile.adaptive(contentPadding: EdgeInsets.zero, title: const LText('In-app chat sound'), subtitle: const LText('Play the foreground alert for new job messages'), value: _chatSound, onChanged: _saving ? null : (value) => setState(() => _chatSound = value)),
+                 const SizedBox(height: 8),
+-                FilledButton.icon(onPressed: _saving ? null : _save, icon: _saving ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.cloud_done_rounded), label: const Text('Save settings')),
++                FilledButton.icon(onPressed: _saving ? null : _save, icon: _saving ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.cloud_done_rounded), label: const LText('Save settings')),
+                 const SizedBox(height: 8),
+-                const Text('Operating-system notification permissions are still controlled by Android or iOS. These settings control the Gaotus Driver app behaviour.', style: TextStyle(color: Color(0xFF606772), height: 1.4)),
++                const LText('Operating-system notification permissions are still controlled by Android or iOS. These settings control the Gaotus Driver app behaviour.', style: TextStyle(color: Color(0xFF606772), height: 1.4)),
+               ],
+             ),
+           ],
+@@ -482,7 +483,7 @@
+         Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+         const Divider(height: 22),
+       ];
+-      if (visible.isEmpty) ...<Widget>[const SizedBox(height: 10), const Text('No Platform data recorded yet.')],
++      if (visible.isEmpty) ...<Widget>[const SizedBox(height: 10), const LText('No Platform data recorded yet.')],
+       ...visible.entries.expand((entry) => row(entry.key.replaceAll('_', ' '), entry.value)),
+     ]);
+   }
+@@ -540,7 +541,7 @@
+       decoration: BoxDecoration(color: color.withValues(alpha: .12), borderRadius: BorderRadius.circular(18)),
+       child: ListTile(
+         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+         leading: Icon(icon, color: color),
+-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
++        title: Text(AppLocale.tr(title), style: const TextStyle(fontWeight: FontWeight.w900)),
+         subtitle: Text(subtitle),
+       ),
+     );
+--- a/lib/screens/driver_menu_screen.dart
++++ b/lib/screens/driver_menu_screen.dart
+@@ -12,6 +12,7 @@
+ import 'driver_hub_screens.dart';
+ import '../config/app_config.dart';
+ import '../core/country_config.dart';
++import '../core/app_locale.dart';
+ 
+ class DriverMenuScreen extends StatelessWidget {
+   const DriverMenuScreen({super.key, required this.session});
+@@ -60,7 +61,7 @@
+                         border: Border.all(color: const Color(0xFFE4E4E4)),
+                         color: const Color(0xFFF9F9F9),
+                       ),
+-                      child: Text(session.isOnline ? 'ONLINE' : 'OFFLINE', style: const TextStyle(fontWeight: FontWeight.w900)),
++                      child: Text((session.isOnline ? AppLocale.tr('Online') : AppLocale.tr('Offline')).toUpperCase(), style: const TextStyle(fontWeight: FontWeight.w900)),
+                     ),
+                   ],
+                 ),
+@@ -70,7 +71,7 @@
+                 Text(
+                   name.isEmpty ? 'Driver' : name,
+                   maxLines: 1,
+                   overflow: TextOverflow.ellipsis,
+                   style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                 ),
+@@ -91,11 +92,11 @@
+           ),
+           const SizedBox(height: 14),
+           _MenuSection(
+-            title: 'Manage',
++            title: AppLocale.tr('Manage'),
+             children: <Widget>[
+-              _MenuTile(icon: Icons.person_outline_rounded, label: 'Profile', onTap: () => _push(context, DriverProfileScreen(session: session))),
+-              _MenuTile(icon: Icons.directions_car_outlined, label: 'Vehicle', onTap: () => _push(context, DriverVehicleScreen(session: session))),
+-              _MenuTile(icon: Icons.folder_open_outlined, label: 'Documents', onTap: () => _push(context, DriverDocumentsScreen(session: session))),
++              _MenuTile(icon: Icons.person_outline_rounded, label: AppLocale.tr('Profile'), onTap: () => _push(context, DriverProfileScreen(session: session))),
++              _MenuTile(icon: Icons.directions_car_outlined, label: AppLocale.tr('Vehicle'), onTap: () => _push(context, DriverVehicleScreen(session: session))),
++              _MenuTile(icon: Icons.folder_open_outlined, label: AppLocale.tr('Documents'), onTap: () => _push(context, DriverDocumentsScreen(session: session))),
+             ],
+           ),
+           const SizedBox(height: 14),
+@@ -103,11 +104,11 @@
+           ),
+           const SizedBox(height: 14),
+           _MenuSection(
+-            title: 'Support',
++            title: AppLocale.tr('Support'),
+             children: <Widget>[
+-              _MenuTile(icon: Icons.help_outline_rounded, label: 'Help', onTap: () => _push(context, DriverHelpScreen(session: session))),
+-              _MenuTile(icon: Icons.health_and_safety_outlined, label: 'Safety', onTap: () => _push(context, DriverSafetyScreen(session: session))),
+-              _MenuTile(icon: Icons.settings_outlined, label: 'Settings', onTap: () => _push(context, DriverSettingsScreen(session: session))),
++              _MenuTile(icon: Icons.help_outline_rounded, label: AppLocale.tr('Help'), onTap: () => _push(context, DriverHelpScreen(session: session))),
++              _MenuTile(icon: Icons.health_and_safety_outlined, label: AppLocale.tr('Safety'), onTap: () => _push(context, DriverSafetyScreen(session: session))),
++              _MenuTile(icon: Icons.settings_outlined, label: AppLocale.tr('Settings'), onTap: () => _push(context, DriverSettingsScreen(session: session))),
+             ],
+           ),
+           const SizedBox(height: 18),
+@@ -115,7 +116,7 @@
+             icon: const Icon(Icons.logout_rounded),
+             onPressed: () => session.logout(),
+-            label: const Text('Sign out'),
++            label: const LText('Sign out'),
+           ),
+           const SizedBox(height: 18),
+-          Center(child: Text('Gaotus Driver ${AppConfig.version}', style: const TextStyle(color: Color(0xFF737373), fontSize: 12))),
++          Center(child: Text('Gaotus Driver ${AppConfig.version} · ${CountryConfig.code} · ${CountryConfig.currency}', style: const TextStyle(color: Color(0xFF737373), fontSize: 12))),
+         ],
+       ),
+     );
+@@ -136,7 +137,7 @@
+         children: <Widget>[
+           Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
+           if (subtitle.isNotEmpty) Text(subtitle, style: const TextStyle(color: Color(0xFF737373))),
+         ],
+       ),
+     );
+--- a/lib/screens/earnings_screen.dart
++++ b/lib/screens/earnings_screen.dart
+@@ -4,6 +4,7 @@
+ import '../models/earnings_summary.dart';
+ import '../state/app_session.dart';
+ import '../theme/driver_theme.dart';
++import '../core/app_locale.dart';
+ 
+ class EarningsScreen extends StatefulWidget {
+   const EarningsScreen({super.key, required this.session});
+@@ -56,7 +57,7 @@
+   Widget _body(EarningsSummary data) {
+     return RefreshIndicator(
+       onRefresh: () => _load(refresh: true),
+@@ -59,7 +60,7 @@
+         padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
+         children: <Widget>[
+           Row(children: <Widget>[
+-            const Expanded(child: Text('Earnings', style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900))),
++            const Expanded(child: LText('Earnings', style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900))),
+             IconButton(onPressed: () => _load(refresh: true), icon: const Icon(Icons.refresh_rounded)),
+           ]),
+           const SizedBox(height: 18),
+@@ -73,7 +74,7 @@
+               Expanded(child: _StatCard(icon: Icons.account_balance_wallet_rounded, label: 'Your share', value: money(data.driverShare, data.currency))),
+               const SizedBox(width: 10),
+               Expanded(child: _StatCard(icon: Icons.business_rounded, label: 'Company', value: money(data.companyShare, data.currency))),
+             ],
+           ),
+           const SizedBox(height: 22),
+@@ -82,10 +83,10 @@
+           const SizedBox(height: 22),
+           Row(children: <Widget>[
+-            const Expanded(child: Text('Completed trips', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900))),
++            const Expanded(child: LText('Completed trips', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900))),
+             Text('${data.jobs.length}', style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF666666))),
+           ]),
+           const SizedBox(height: 10),
+           if (data.jobs.isEmpty)
+-            const Padding(padding: EdgeInsets.symmetric(vertical: 28), child: Center(child: Text('No completed trips in this period.')))
++            const Padding(padding: EdgeInsets.symmetric(vertical: 28), child: Center(child: LText('No completed trips in this period.')))
+           else
+             ...data.jobs.map((job) => _TripRow(job: job, currency: data.currency)),
+@@ -104,7 +105,7 @@
+     });
+   }
+@@ -179,7 +180,7 @@
+   Widget build(BuildContext context) => Container(
+         padding: const EdgeInsets.all(16),
+         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE5E7EB))),
+         child: Row(children: <Widget>[
+           CircleAvatar(backgroundColor: const Color(0xFFF3F4F6), foregroundColor: Colors.black, child: Icon(icon)),
+           const SizedBox(width: 12),
+           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+-            Text(label, style: const TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w700)),
++            Text(AppLocale.tr(label), style: const TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w700)),
+             const SizedBox(height: 3),
+             Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+           ])),
+@@ -247,7 +248,7 @@
+           CircleAvatar(backgroundColor: const Color(0xFFF3F4F6), child: Text('${job.bookingId}')),
+           const SizedBox(width: 12),
+           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+-            Text('Trip #${job.bookingId}', style: const TextStyle(fontWeight: FontWeight.w900)),
++            Text('${AppLocale.tr('Trip')} #${job.bookingId}', style: const TextStyle(fontWeight: FontWeight.w900)),
+             const SizedBox(height: 3),
+             Text('${job.completedAt}${job.paymentMethod.isEmpty ? '' : ' · ${job.paymentMethod}'}', style: const TextStyle(color: Color(0xFF666666))),
+             const SizedBox(height: 2),
+@@ -262,7 +263,7 @@
+         crossAxisAlignment: CrossAxisAlignment.start,
+         children: <Widget>[
+           _moneyRow('Your share', money(job.driverShare, currency), bold: true),
+-          Text('Customer fare ${money(job.grossTotal, currency)}', style: const TextStyle(color: Color(0xFF666666))),
++          Text('${AppLocale.tr('Customer fare')} ${money(job.grossTotal, currency)}', style: const TextStyle(color: Color(0xFF666666))),
+         ],
+       );
+ 
+--- a/lib/screens/job_screen.dart
++++ b/lib/screens/job_screen.dart
+@@ -4,6 +4,7 @@
+ import '../core/country_config.dart';
+ import '../models/booking.dart';
+ import '../state/app_session.dart';
++import '../core/app_locale.dart';
+ import '../theme/driver_theme.dart';
+ import 'chat_screen.dart';
+@@ -20,7 +21,7 @@
+   @override
+   Widget build(BuildContext context) {
+     final job = session.activeJob;
+-    if (job == null) return const Scaffold(body: Center(child: Text('No active trip.')));
++    if (job == null) return const Scaffold(body: Center(child: LText('No active trip.')));
+     if (job.isOperationsJob) {
+       return OperationsJobScreen(session: session);
+@@ -163,9 +164,11 @@
+ 
+   Future<void> _completeTrip(BuildContext context, Booking job) async {
+     final extrasText = session.tripExtrasTotal > 0
+-        ? 'Extras total: ${CountryConfig.money(session.tripExtrasTotal)}. The saved payment method will be attempted; otherwise the customer receives an invoice.'
+-        : 'There are no trip extras to charge.';
++        ? (AppLocale.isRo
++            ? 'Total extra-uri: ${CountryConfig.money(session.tripExtrasTotal)}. Se va încerca metoda de plată salvată; în caz contrar clientul primește o factură.'
++            : 'Extras total: ${CountryConfig.money(session.tripExtrasTotal)}. The saved payment method will be attempted; otherwise the customer receives an invoice.')
++        : AppLocale.tr('There are no trip extras to charge.');
+     final yes = await showDialog<bool>(
+       context: context,
+       builder: (dialogContext) => AlertDialog(
+-        title: const Text('Complete trip?'),
+-        content: Text('$extrasText\n\nThis will close trip #${job.id} and make you available again.'),
++        title: const LText('Complete trip?'),
++        content: Text(AppLocale.isRo ? '$extrasText\n\nAceasta va închide cursa #${job.id} și vei deveni din nou disponibil.' : '$extrasText\n\nThis will close trip #${job.id} and make you available again.'),
+         actions: <Widget>[
+-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Not yet')),
+-          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Complete')),
++          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const LText('Not yet')),
++          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const LText('Complete')),
+         ],
+       ),
+     );
+@@ -215,7 +218,7 @@
+     final job = session.activeJob;
+     if (job == null) {
+       return const Scaffold(
+-        body: Center(child: Text('No active trip.')),
++        body: Center(child: LText('No active trip.')),
+       );
+     }
+     return Scaffold(
+-      appBar: AppBar(title: const Text('Current trip')),
++      appBar: AppBar(title: const LText('Current trip')),
+@@ -294,7 +297,7 @@
+                   ),
+                   const SizedBox(height: 8),
+-                  FilledButton.icon(onPressed: () => _call(job.passengerPhone), icon: const Icon(Icons.phone_rounded), label: const Text('Call', style: TextStyle(fontWeight: FontWeight.w800))),
++                  FilledButton.icon(onPressed: () => _call(job.passengerPhone), icon: const Icon(Icons.phone_rounded), label: const LText('Call', style: TextStyle(fontWeight: FontWeight.w800))),
+                   const SizedBox(width: 8),
+-                  FilledButton.icon(onPressed: () => _navigate(job.destination), icon: const Icon(Icons.navigation_rounded), label: const Text('Navigate', style: TextStyle(fontWeight: FontWeight.w800))),
++                  FilledButton.icon(onPressed: () => _navigate(job.destination), icon: const Icon(Icons.navigation_rounded), label: const LText('Navigate', style: TextStyle(fontWeight: FontWeight.w800))),
+@@ -315,7 +318,7 @@
+                       builder: (_) => ChatScreen(session: session, bookingId: job.id),
+                     ),
+                   ),
+                   icon: const Icon(Icons.chat_bubble_outline_rounded),
+-                  label: const Text('Message passenger', style: TextStyle(fontWeight: FontWeight.w800)),
++                  label: const LText('Message passenger', style: TextStyle(fontWeight: FontWeight.w800)),
+@@ -363,7 +366,7 @@
+                   onPressed: session.busy ? null : () => _completeTrip(context, job),
+                   icon: const Icon(Icons.flag_rounded),
+-                  label: const Text('Complete trip'),
++                  label: const LText('Complete trip'),
+@@ -394,15 +397,15 @@
+           children: <Widget>[
+-            _Detail(icon: Icons.flight_land_rounded, title: 'Flight', value: job.flight),
+-            _Detail(icon: Icons.notes_rounded, title: 'Notes', value: job.notes),
++            _Detail(icon: Icons.flight_land_rounded, title: AppLocale.tr('Flight'), value: job.flight),
++            _Detail(icon: Icons.notes_rounded, title: AppLocale.tr('Notes'), value: job.notes),
+@@ -404,7 +407,7 @@
+                 Text(CountryConfig.money(job.total), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
+-                const Text('customer fare', style: TextStyle(fontSize: 11, color: Color(0xFF666666))),
++                const LText('customer fare', style: TextStyle(fontSize: 11, color: Color(0xFF666666))),
+@@ -432,9 +435,9 @@
+-        const Expanded(child: Text('Trip extras', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900))),
++        const Expanded(child: LText('Trip extras', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900))),
+@@ -436,7 +439,7 @@
+-        const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Text('No extras added. Automatic waiting time will appear here when applicable.'))
++        const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: LText('No extras added. Automatic waiting time will appear here when applicable.'))
+@@ -449,10 +452,10 @@
+-        Row(children: <Widget>[const Expanded(child: Text('Extras total', style: TextStyle(fontWeight: FontWeight.w800))), Text(CountryConfig.money(total), style: const TextStyle(fontWeight: FontWeight.w900))]),
++        Row(children: <Widget>[const Expanded(child: LText('Extras total', style: TextStyle(fontWeight: FontWeight.w800))), Text(CountryConfig.money(total), style: const TextStyle(fontWeight: FontWeight.w900))]),
+-        OutlinedButton.icon(onPressed: disabled ? null : onAdd, icon: const Icon(Icons.add_rounded), label: const Text('Add extra')),
++        OutlinedButton.icon(onPressed: disabled ? null : onAdd, icon: const Icon(Icons.add_rounded), label: const LText('Add extra')),
+@@ -470,7 +473,7 @@
+-            Text(title, style: const TextStyle(color: Color(0xFF666666), fontSize: 12)),
++            Text(AppLocale.tr(title), style: const TextStyle(color: Color(0xFF666666), fontSize: 12)),
+@@ -472,7 +475,7 @@
+-            Text(value.isEmpty ? 'Address unavailable' : value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
++            Text(value.isEmpty ? AppLocale.tr('Address unavailable') : value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+--- a/lib/screens/login_screen.dart
++++ b/lib/screens/login_screen.dart
+@@ -6,6 +6,7 @@
+ import '../state/app_session.dart';
+ import '../theme/driver_theme.dart';
++import '../core/app_locale.dart';
+@@ -91,7 +92,7 @@
+-            Text('Driver', style: theme.textTheme.headlineSmall),
++            Text(AppLocale.tr('Driver'), style: theme.textTheme.headlineSmall),
+@@ -100,7 +101,7 @@
+-              label: const Text('WordPress site URL'),
++              label: const LText('WordPress site URL'),
+@@ -118,7 +119,7 @@
+-              label: const Text('Email or username'),
++              label: const LText('Email or username'),
+@@ -129,7 +130,7 @@
+-              label: const Text('Password'),
++              label: const LText('Password'),
+@@ -144,7 +145,7 @@
+-                    : const Text('SIGN IN AS DRIVER'),
++                    : const LText('SIGN IN AS DRIVER'),
+--- a/lib/screens/nearby_jobs_screen.dart
++++ b/lib/screens/nearby_jobs_screen.dart
+@@ -5,6 +5,7 @@
+ import '../state/app_session.dart';
+ import '../theme/driver_theme.dart';
+ import '../widgets/offer_card.dart';
++import '../core/app_locale.dart';
+@@ -61,7 +62,7 @@
+-          title: const Text('Jobs', style: TextStyle(fontWeight: FontWeight.w900)),
++          title: const LText('Jobs', style: TextStyle(fontWeight: FontWeight.w900)),
+@@ -113,7 +114,7 @@
+-                    label: const Text('Open active job', style: TextStyle(fontWeight: FontWeight.w900)),
++                    label: const LText('Open active job', style: TextStyle(fontWeight: FontWeight.w900)),
+@@ -143,7 +144,7 @@
+-              const Text('No new nearby jobs', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
++              const LText('No new nearby jobs', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+--- a/lib/screens/operations_job_screen.dart
++++ b/lib/screens/operations_job_screen.dart
+@@ -12,6 +12,7 @@
+ import '../state/app_session.dart';
+ import '../theme/driver_theme.dart';
++import '../core/app_locale.dart';
+@@ -101,7 +102,7 @@
+-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.session.errorMessage ?? 'Could not update stop.')));
++      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.session.errorMessage ?? AppLocale.tr('Could not update stop.'))));
+@@ -269,7 +270,7 @@
+-                  Text(job.jobTypeLabel.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)),
++                  Text(AppLocale.jobType(job.jobType).toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)),
+@@ -297,7 +298,7 @@
+-                    Text('Next · ${next.operationLabel}', style: const TextStyle(color: Color(0xFF666666), fontSize: 12, fontWeight: FontWeight.w800)),
++                    Text('${AppLocale.tr('Next')} · ${AppLocale.operation(next.operationType)}', style: const TextStyle(color: Color(0xFF666666), fontSize: 12, fontWeight: FontWeight.w800)),
+@@ -354,7 +355,7 @@
+-                  label: const Text('Navigate'),
++                  label: const LText('Navigate'),
+@@ -361,7 +362,7 @@
+-                  label: const Text('Call'),
++                  label: const LText('Call'),
+@@ -368,7 +369,7 @@
+-                  label: const Text('Chat'),
++                  label: const LText('Chat'),
+@@ -386,10 +387,10 @@
+-                          label: const Text('Complete with proof'),
++                          label: const LText('Complete with proof'),
+@@ -393,7 +394,7 @@
+-                          label: const Text('Failed'),
++                          label: const LText('Failed'),
+@@ -400,7 +401,7 @@
+-                          label: const Text('Postpone'),
++                          label: const LText('Postpone'),
+@@ -513,7 +514,7 @@
+-            const Text('Proof of completion', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
++            const LText('Proof of completion', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+@@ -515,7 +516,7 @@
+-            Text('${widget.stop.operationLabel} · stop ${widget.stop.sequence}', style: const TextStyle(color: Color(0xFF666666))),
++            Text('${AppLocale.operation(widget.stop.operationType)} · ${AppLocale.tr('stop')} ${widget.stop.sequence}', style: const TextStyle(color: Color(0xFF666666))),
+@@ -620,7 +621,7 @@
+-            Text('${stop.operationLabel} · ${stop.status.replaceAll('_', ' ')}', style: const TextStyle(fontWeight: FontWeight.w900)),
++            Text('${AppLocale.operation(stop.operationType)} · ${AppLocale.status(stop.status)}', style: const TextStyle(fontWeight: FontWeight.w900)),
+--- a/lib/services/offer_notification_service.dart
++++ b/lib/services/offer_notification_service.dart
+@@ -5,6 +5,7 @@
+ import 'package:audioplayers/audioplayers.dart';
+ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
++import '../core/app_locale.dart';
+@@ -36,9 +37,9 @@
+-    const android = AndroidNotificationDetails(
++    final android = AndroidNotificationDetails(
+       'gmp_trip_requests_v4',
+-      'Job requests',
+-      channelDescription: 'Nearby ride, delivery and collection job requests',
++      AppLocale.tr('Job requests'),
++      channelDescription: AppLocale.tr('Nearby ride, delivery and collection job requests'),
+@@ -48,7 +49,7 @@
+-        const NotificationDetails(android: android),
++        NotificationDetails(android: android),
+@@ -64,9 +65,9 @@
+-    const android = AndroidNotificationDetails(
++    final android = AndroidNotificationDetails(
+       'gmp_driver_messages_v4',
+-      'Driver messages',
+-      channelDescription: 'Customer and dispatch job messages',
++      AppLocale.tr('Driver messages'),
++      channelDescription: AppLocale.tr('Customer and dispatch job messages'),
+@@ -76,7 +77,7 @@
+-        const NotificationDetails(android: android),
++        NotificationDetails(android: android),
+--- a/lib/state/app_session.dart
++++ b/lib/state/app_session.dart
+@@ -15,6 +15,7 @@
+ import '../services/realtime_service.dart';
+ import '../services/offer_notification_service.dart';
+ import '../core/country_config.dart';
++import '../core/app_locale.dart';
+@@ -91,7 +92,7 @@
+-      if (recoveryMode) errorMessage = 'Connected session; live sync is retrying';
++      if (recoveryMode) errorMessage = AppLocale.tr('Connected session; live sync is retrying');
+@@ -156,7 +157,7 @@
+-      errorMessage = 'Startup recovery: $error';
++      errorMessage = '${AppLocale.tr('Startup recovery')}: $error';
+@@ -231,7 +232,7 @@
+-        errorMessage = 'Signed in. Driver data sync is retrying';
++        errorMessage = AppLocale.tr('Signed in. Driver data sync is retrying');
+@@ -393,7 +394,7 @@
+-      final title = payload['notification_title']?.toString() ?? 'New passenger message';
++      final title = payload['notification_title']?.toString() ?? AppLocale.tr('New passenger message');
+@@ -394,7 +395,7 @@
+-      final body = payload['notification_body']?.toString() ?? 'Open the job chat to read the message.';
++      final body = payload['notification_body']?.toString() ?? AppLocale.tr('Open the job chat to read the message.');
+@@ -407,7 +408,7 @@
+-      final title = payload['notification_title']?.toString() ?? 'New trip request';
++      final title = payload['notification_title']?.toString() ?? AppLocale.tr('New trip request');
+@@ -738,7 +739,7 @@
+-    if (raw is! Map<String, dynamic>) throw const ApiException('Invalid chat response.');
++    if (raw is! Map<String, dynamic>) throw ApiException(AppLocale.tr('Invalid chat response.'));
+@@ -1098,6 +1099,7 @@
+     driverSettings = <String, dynamic>{};
++    CountryConfig.reset();
+--- a/lib/widgets/offer_card.dart
++++ b/lib/widgets/offer_card.dart
+@@ -5,6 +5,7 @@
+ import '../models/job_offer.dart';
+ import '../core/country_config.dart';
++import '../core/app_locale.dart';
+@@ -61,12 +62,12 @@
+-                child: Text(job.jobTypeLabel.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)),
++                child: Text(AppLocale.jobType(job.jobType).toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)),
+@@ -70,7 +71,7 @@
+-                  Text(job.isRide ? 'trip total' : 'job value', style: const TextStyle(color: Color(0xFF666666), fontSize: 12)),
++                  Text(AppLocale.tr(job.isRide ? 'trip total' : 'job value'), style: const TextStyle(color: Color(0xFF666666), fontSize: 12)),
+@@ -100,7 +101,7 @@
+-              child: const Text('Decline', style: TextStyle(fontWeight: FontWeight.w800)),
++              child: const LText('Decline', style: TextStyle(fontWeight: FontWeight.w800)),
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -1,6 +1,6 @@
+ name: gaotus_mobility_driver
+ description: Driver app for Gaotus Mobility Platform.
+ publish_to: none
+-version: 0.6.1+16
++version: 0.6.2+17
+ environment:
+   sdk: '>=3.4.0 <4.0.0'
+ dependencies:
+@@ -8,6 +8,8 @@
+   flutter:
+     sdk: flutter
++  flutter_localizations:
++    sdk: flutter
+   http: ^1.2.2
