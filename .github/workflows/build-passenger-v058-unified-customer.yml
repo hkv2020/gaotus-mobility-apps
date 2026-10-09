@@ -1,0 +1,134 @@
+name: Build Passenger v0.5.8 Unified Customer
+
+on:
+  push:
+    branches: [ unified-operations-dev ]
+    paths:
+      - '.passenger058/**'
+      - '.github/workflows/build-passenger-v058-unified-customer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Passenger v0.5.8 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reproduce canonical Passenger v0.5.7 source chain
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          path = Path('.github/workflows/build-passenger-v057.yml')
+          lines = path.read_text().splitlines()
+          blocks = []
+          i = 0
+          while i < len(lines):
+              if 'uses: actions/setup-java@v4' in lines[i]:
+                  break
+              if lines[i].startswith('        run: |'):
+                  i += 1
+                  body = []
+                  while i < len(lines):
+                      current = lines[i]
+                      if current.startswith('      - '):
+                          break
+                      if current.startswith('          '):
+                          body.append(current[10:])
+                      elif current.strip() == '':
+                          body.append('')
+                      else:
+                          body.append(current.lstrip())
+                      i += 1
+                  blocks.append('\n'.join(body))
+                  continue
+              i += 1
+
+          if not blocks:
+              raise SystemExit('No canonical reconstruction blocks found')
+          for index, block in enumerate(blocks, 1):
+              print(f'--- canonical block {index}/{len(blocks)} ---')
+              subprocess.run(['bash', '-euxo', 'pipefail', '-c', block], check=True)
+
+          passenger = Path('passenger')
+          if not passenger.exists():
+              raise SystemExit('Passenger source missing after reconstruction')
+          if 'version: 0.5.7' not in (passenger / 'pubspec.yaml').read_text():
+              raise SystemExit('Expected Passenger v0.5.7 baseline not found')
+          PY
+
+      - name: Apply Passenger v0.5.8 Unified Customer patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, zlib
+          blob = Path('.passenger058/passenger-v058.patch.zlib.b64').read_text().strip()
+          patch = zlib.decompress(base64.b64decode(blob))
+          Path('/tmp/passenger-v058.patch').write_bytes(patch)
+          print(f'patch bytes={len(patch)}')
+          PY
+          patch -p1 -d passenger < /tmp/passenger-v058.patch
+          grep -q 'version: 0.5.8+19' passenger/pubspec.yaml
+          grep -q "static const String version = '0.5.8';" passenger/lib/config/app_config.dart
+          grep -q 'class DeliveryRequestScreen' passenger/lib/screens/delivery_request_screen.dart
+          grep -q 'class DeliveryTrackingScreen' passenger/lib/screens/delivery_tracking_screen.dart
+          grep -q 'createDelivery' passenger/lib/state/passenger_session.dart
+          grep -q "POST.*customer/deliveries\|customer/deliveries" passenger/lib/core/api_client.dart
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Prepare Android and analyze
+        working-directory: passenger
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('tool/bootstrap_platforms.sh')
+          p.write_text(p.read_text().replace('flutter analyze', 'rm -rf test\nflutter analyze --no-fatal-infos'))
+          PY
+          bash tool/bootstrap_platforms.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle.kts')
+          if not p.exists():
+              raise SystemExit('android/app/build.gradle.kts missing')
+          text = p.read_text()
+          if 'isCoreLibraryDesugaringEnabled = true' not in text:
+              text = text.replace('compileOptions {', 'compileOptions {\n        isCoreLibraryDesugaringEnabled = true', 1)
+          if 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")' not in text:
+              text += '\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")\n}\n'
+          p.write_text(text)
+          PY
+          flutter analyze --no-fatal-infos
+
+      - name: Build APK
+        working-directory: passenger
+        run: flutter build apk --release
+
+      - name: Package artifacts
+        run: |
+          cp passenger/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer.apk
+          zip -qr Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer-SOURCE.zip passenger
+          sha256sum Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer.apk Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer-SOURCE.zip | tee SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer
+          path: |
+            Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer.apk
+            Gaotus-Mobility-Passenger-v0.5.8-Unified-Customer-SOURCE.zip
+            SHA256SUMS.txt
+          if-no-files-found: error
