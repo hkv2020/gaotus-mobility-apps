@@ -1,0 +1,329 @@
+isAlignment: CrossAxisAlignment.start, children: <Widget>[
++                Text(title, style: TextStyle(color: selected ? Colors.white : AppTheme.ink, fontWeight: FontWeight.w900)),
++                Text(subtitle, style: TextStyle(color: selected ? const Color(0xFFC8C8C8) : AppTheme.softInk, fontSize: 11)),
++              ])),
++            ]),
++          ),
++        ),
++      );
++}
++
+ class _NearbyCarMarker extends StatelessWidget {
+   const _NearbyCarMarker({required this.car});
+   final NearbyCar car;
+diff -ruN old/passenger/lib/screens/send_parcel_screen.dart new/passenger/lib/screens/send_parcel_screen.dart
+--- old/passenger/lib/screens/send_parcel_screen.dart	1970-01-01 00:00:00.000000000 +0000
++++ new/passenger/lib/screens/send_parcel_screen.dart	2026-10-09 10:16:47.386807317 +0000
+@@ -0,0 +1,264 @@
++import 'package:flutter/material.dart';
++
++import '../models/place_selection.dart';
++import '../state/passenger_session.dart';
++import '../theme/app_theme.dart';
++import 'delivery_screen.dart';
++import 'place_search_screen.dart';
++
++class SendParcelScreen extends StatefulWidget {
++  const SendParcelScreen({super.key, required this.session});
++  final PassengerSession session;
++
++  @override
++  State<SendParcelScreen> createState() => _SendParcelScreenState();
++}
++
++class _SendParcelScreenState extends State<SendParcelScreen> {
++  PlaceSelection? pickup;
++  PlaceSelection? destination;
++  DateTime pickupAt = DateTime.now().add(const Duration(minutes: 20));
++  final recipientName = TextEditingController();
++  final recipientPhone = TextEditingController();
++  final reference = TextEditingController();
++  final weight = TextEditingController();
++  final notes = TextEditingController();
++  int packageCount = 1;
++  String packageSize = 'Medium';
++  bool locationLoading = true;
++
++  @override
++  void initState() {
++    super.initState();
++    _primePickup();
++  }
++
++  @override
++  void dispose() {
++    recipientName.dispose();
++    recipientPhone.dispose();
++    reference.dispose();
++    weight.dispose();
++    notes.dispose();
++    super.dispose();
++  }
++
++  Future<void> _primePickup() async {
++    try {
++      final p = await widget.session.location.current();
++      final resolved = await widget.session.reverseGeocode(p.latitude, p.longitude);
++      if (mounted) setState(() => pickup = resolved);
++    } catch (_) {
++      // Manual address selection remains available.
++    } finally {
++      if (mounted) setState(() => locationLoading = false);
++    }
++  }
++
++  Future<PlaceSelection?> _choose(String title, {PlaceSelection? bias}) => Navigator.of(context).push<PlaceSelection>(
++        MaterialPageRoute(
++          builder: (_) => PlaceSearchScreen(
++            session: widget.session,
++            title: title,
++            biasLat: bias?.lat,
++            biasLng: bias?.lng,
++          ),
++        ),
++      );
++
++  Future<void> _schedule() async {
++    final d = await showDatePicker(
++      context: context,
++      firstDate: DateTime.now(),
++      lastDate: DateTime.now().add(const Duration(days: 90)),
++      initialDate: pickupAt,
++    );
++    if (d == null || !mounted) return;
++    final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(pickupAt));
++    if (t == null) return;
++    setState(() => pickupAt = DateTime(d.year, d.month, d.day, t.hour, t.minute));
++  }
++
++  Future<void> _submit() async {
++    if (pickup == null || destination == null) {
++      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Choose collection and delivery addresses.')));
++      return;
++    }
++    if (recipientName.text.trim().isEmpty || recipientPhone.text.trim().isEmpty) {
++      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add recipient name and phone number.')));
++      return;
++    }
++    String pad(int v) => v.toString().padLeft(2, '0');
++    final identity = widget.session.identity ?? const <String, dynamic>{};
++    final senderName = (identity['name'] ?? identity['display_name'] ?? '').toString();
++    final senderPhone = (identity['phone'] ?? '').toString();
++    final parcelRef = reference.text.trim().isEmpty ? 'GMP-${DateTime.now().millisecondsSinceEpoch}' : reference.text.trim();
++    final packageWeight = double.tryParse(weight.text.trim().replaceAll(',', '.')) ?? 0;
++    final body = <String, Object?>{
++      'job_type': 'delivery',
++      'pickup_date': '${pickupAt.year}-${pad(pickupAt.month)}-${pad(pickupAt.day)}',
++      'pickup_time': '${pad(pickupAt.hour)}:${pad(pickupAt.minute)}',
++      'payment_method': 'account',
++      'notes': notes.text.trim(),
++      'stops': <Map<String, Object?>>[
++        <String, Object?>{
++          'operation_type': 'pickup',
++          'address': pickup!.address,
++          'lat': pickup!.lat,
++          'lng': pickup!.lng,
++          'contact_name': senderName,
++          'contact_phone': senderPhone,
++          'sender_name': senderName,
++          'sender_phone': senderPhone,
++          'package_ref': parcelRef,
++          'package_count': packageCount,
++          'package_weight_kg': packageWeight,
++          'package_size': packageSize,
++          'notes': notes.text.trim(),
++        },
++        <String, Object?>{
++          'operation_type': 'delivery',
++          'address': destination!.address,
++          'lat': destination!.lat,
++          'lng': destination!.lng,
++          'contact_name': recipientName.text.trim(),
++          'contact_phone': recipientPhone.text.trim(),
++          'recipient_name': recipientName.text.trim(),
++          'recipient_phone': recipientPhone.text.trim(),
++          'package_ref': parcelRef,
++          'package_count': packageCount,
++          'package_weight_kg': packageWeight,
++          'package_size': packageSize,
++          'notes': notes.text.trim(),
++        },
++      ],
++    };
++    try {
++      final job = await widget.session.createDelivery(body);
++      if (!mounted) return;
++      Navigator.of(context).pushReplacement(
++        MaterialPageRoute(builder: (_) => DeliveryScreen(session: widget.session, bookingId: job.id)),
++      );
++    } catch (error) {
++      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) => Scaffold(
++        appBar: AppBar(title: const Text('Send a parcel')),
++        body: SafeArea(
++          child: ListView(
++            padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
++            children: <Widget>[
++              Text('Door-to-door delivery', style: Theme.of(context).textTheme.headlineMedium),
++              const SizedBox(height: 5),
++              const Text('One app for rides and deliveries. We’ll assign the best available driver.', style: TextStyle(color: AppTheme.softInk, height: 1.35)),
++              const SizedBox(height: 20),
++              _AddressTile(
++                icon: Icons.inventory_2_outlined,
++                label: 'Collection',
++                value: locationLoading ? 'Finding your location…' : (pickup?.address ?? 'Choose collection address'),
++                onTap: () async {
++                  final value = await _choose('Collection address', bias: pickup);
++                  if (value != null && mounted) setState(() => pickup = value);
++                },
++              ),
++              const SizedBox(height: 10),
++              _AddressTile(
++                icon: Icons.location_on_outlined,
++                label: 'Delivery',
++                value: destination?.address ?? 'Choose delivery address',
++                onTap: () async {
++                  final value = await _choose('Delivery address', bias: pickup);
++                  if (value != null && mounted) setState(() => destination = value);
++                },
++              ),
++              const SizedBox(height: 18),
++              OutlinedButton.icon(onPressed: _schedule, icon: const Icon(Icons.schedule_rounded), label: Text('Collection ${_dateLabel(pickupAt)}')),
++              const SizedBox(height: 18),
++              Text('Recipient', style: Theme.of(context).textTheme.titleLarge),
++              const SizedBox(height: 10),
++              TextField(controller: recipientName, textInputAction: TextInputAction.next, decoration: const InputDecoration(labelText: 'Recipient name')),
++              const SizedBox(height: 10),
++              TextField(controller: recipientPhone, keyboardType: TextInputType.phone, textInputAction: TextInputAction.next, decoration: const InputDecoration(labelText: 'Recipient phone')),
++              const SizedBox(height: 20),
++              Text('Parcel', style: Theme.of(context).textTheme.titleLarge),
++              const SizedBox(height: 10),
++              Row(children: <Widget>[
++                Expanded(
++                  child: DropdownButtonFormField<String>(
++                    value: packageSize,
++                    decoration: const InputDecoration(labelText: 'Size'),
++                    items: const <String>['Small', 'Medium', 'Large', 'XL'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
++                    onChanged: (v) => setState(() => packageSize = v ?? packageSize),
++                  ),
++                ),
++                const SizedBox(width: 10),
++                Expanded(child: TextField(controller: weight, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Weight kg'))),
++              ]),
++              const SizedBox(height: 10),
++              Row(children: <Widget>[
++                Expanded(child: TextField(controller: reference, decoration: const InputDecoration(labelText: 'Reference (optional)'))),
++                const SizedBox(width: 10),
++                Container(
++                  height: 56,
++                  padding: const EdgeInsets.symmetric(horizontal: 10),
++                  decoration: BoxDecoration(border: Border.all(color: const Color(0xFFDFDFDC)), borderRadius: BorderRadius.circular(18)),
++                  child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
++                    IconButton(onPressed: packageCount <= 1 ? null : () => setState(() => packageCount--), icon: const Icon(Icons.remove_rounded)),
++                    Text('$packageCount', style: const TextStyle(fontWeight: FontWeight.w900)),
++                    IconButton(onPressed: packageCount >= 20 ? null : () => setState(() => packageCount++), icon: const Icon(Icons.add_rounded)),
++                  ]),
++                ),
++              ]),
++              const SizedBox(height: 10),
++              TextField(controller: notes, maxLines: 3, decoration: const InputDecoration(labelText: 'Delivery instructions', hintText: 'Access code, fragile parcel, leave with reception…')),
++              const SizedBox(height: 22),
++              FilledButton.icon(
++                onPressed: widget.session.busy ? null : _submit,
++                icon: const Icon(Icons.local_shipping_outlined),
++                label: widget.session.busy
++                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
++                    : const Text('Request delivery'),
++              ),
++              const SizedBox(height: 8),
++              const Text('Delivery pricing can be connected to the same Mobility pricing/payment engine in the next pricing layer.', textAlign: TextAlign.center, style: TextStyle(color: AppTheme.softInk, fontSize: 12)),
++            ],
++          ),
++        ),
++      );
++
++  String _dateLabel(DateTime value) => '${value.day}/${value.month} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
++}
++
++class _AddressTile extends StatelessWidget {
++  const _AddressTile({required this.icon, required this.label, required this.value, required this.onTap});
++  final IconData icon;
++  final String label;
++  final String value;
++  final VoidCallback onTap;
++
++  @override
++  Widget build(BuildContext context) => Material(
++        color: const Color(0xFFF3F3F1),
++        borderRadius: BorderRadius.circular(20),
++        child: InkWell(
++          borderRadius: BorderRadius.circular(20),
++          onTap: onTap,
++          child: Padding(
++            padding: const EdgeInsets.all(16),
++            child: Row(children: <Widget>[
++              CircleAvatar(backgroundColor: Colors.white, child: Icon(icon, color: AppTheme.ink)),
++              const SizedBox(width: 12),
++              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
++                Text(label, style: const TextStyle(color: AppTheme.softInk, fontSize: 12, fontWeight: FontWeight.w800)),
++                const SizedBox(height: 3),
++                Text(value, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
++              ])),
++              const Icon(Icons.chevron_right_rounded),
++            ]),
++          ),
++        ),
++      );
++}
+diff -ruN old/passenger/lib/state/passenger_session.dart new/passenger/lib/state/passenger_session.dart
+--- old/passenger/lib/state/passenger_session.dart	2026-10-09 09:56:59.000000000 +0000
++++ new/passenger/lib/state/passenger_session.dart	2026-10-09 10:16:47.386576137 +0000
+@@ -162,16 +162,17 @@
+       final after=b.status.toLowerCase();
+       if(before!=null&&before!=after&&_lastNotifiedStatus[id]!=after){
+         _lastNotifiedStatus[id]=after;
++        final operations=b.isOperationsJob;
+         final labels=<String,String>{
+-          'assigned':'Driver assigned',
+-          'enroute':'Driver on the way',
+-          'arrived':'Driver has arrived',
+-          'pob':'Trip started',
+-          'completed':'Trip completed',
+-          'cancelled':'Ride cancelled',
++          'assigned':operations?'Delivery driver assigned':'Driver assigned',
++          'enroute':operations?'Driver on the way to your collection':'Driver on the way',
++          'arrived':operations?'Driver has reached the next stop':'Driver has arrived',
++          'pob':operations?'Delivery in progress':'Trip started',
++          'completed':operations?'Delivery completed':'Trip completed',
++          'cancelled':operations?'Delivery cancelled':'Ride cancelled',
+         };
+         final title=labels[after];
+-        if(title!=null)unawaited(_notifications.showRideUpdate(bookingId:id,title:title,body:_statusNotificationBody(after)));
++        if(title!=null)unawaited(_notifications.showRideUpdate(bookingId:id,title:title,body:_statusNotificationBody(after,operations:operations)));
+       }
+     }catch(e){
+       if(!silent)errorMessage='$e';
+@@ -180,15 +181,15 @@
+     }
+   }
+ 
+-  String _statusNotificationBody(String status){
++  String _statusNotificationBody(String status,{bool operations=false}){
+     switch(status){
+-      case 'assigned': return 'Your driver has accepted the ride.';
+-      case 'enroute': return 'Your driver is travelling to the pickup point.';
+-      case 'arrived': return 'Your driver is waiting at the pickup point.';
+-      case 'pob': return 'Your trip is now in progress.';
+-      case 'completed': return 'Thanks for riding with us.';
+-      case 'cancelled': return 'Your ride has been cancelled.';
+-      default: return 'Your ride status has changed.';
++      case 'assigned': return operations ? 'A driver has accepted your delivery.' : 'Your driver has accepted the ride.';
++      case 'enroute': return operations ? 'Your driver is travelling to the next delivery stop.' : 'Your driver is travelling to the pickup point.';
++      case 'arrived': return operations ? 'Your driver has arrived at the next stop.' : 'Your driver is waiting at the pickup point.';
++      case 'pob': return operations ? 'Your delivery is now in progress.' : 'Your trip is now in progress.';
++      case 'completed': return operations ? 'Your delivery has been completed.' : 'Thanks for riding with us.';
++      case 'cancelled': retu
