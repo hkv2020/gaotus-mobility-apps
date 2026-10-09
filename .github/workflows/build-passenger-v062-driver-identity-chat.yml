@@ -55,11 +55,13 @@ jobs:
       - name: Apply Passenger v0.6.2 integration patch
         run: |
           patch -p1 -d passenger < .passenger062/passenger-v062-driver-identity-chat.patch
+          python3 .passenger062/fix062.py
           grep -q 'version: 0.6.2+23' passenger/pubspec.yaml
           grep -q "static const version = '0.6.2';" passenger/lib/config/app_config.dart
           grep -q "avatar_url" passenger/lib/screens/delivery_screen.dart
           grep -q "Urgent surcharge" passenger/lib/screens/send_parcel_screen.dart
           grep -q "chatAlertTitle" passenger/lib/state/passenger_session.dart
+          grep -q "backgroundImage: photo.isNotEmpty" passenger/lib/screens/chat_screen.dart
 
       - uses: actions/setup-java@v4
         with:
