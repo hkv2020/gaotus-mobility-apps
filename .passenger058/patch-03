@@ -1,0 +1,41 @@
+rn operations ? 'Your delivery has been cancelled.' : 'Your ride has been cancelled.';
++      default: return operations ? 'Your delivery status has changed.' : 'Your ride status has changed.';
+     }
+   }
+ 
+@@ -275,6 +276,23 @@
+ 
+   Future<FareQuote> quote(Map<String,Object?> request) async {if(_api==null)throw const ApiException('Not connected.');busy=true;errorMessage=null;notifyListeners();try{lastQuoteRequest=Map<String,Object?>.from(request);lastQuote=FareQuote.fromJson(await _api!.quote(request));return lastQuote!;}finally{busy=false;notifyListeners();}}
+   Future<PassengerBooking> createBooking(VehicleQuote vehicle,{String paymentMethod='online'}) async {if(_api==null||lastQuoteRequest==null)throw const ApiException('Request a fare first.');final body=<String,Object?>{...lastQuoteRequest!,'vehicle_id':vehicle.id,'payment_method':paymentMethod,'terms_accept':true};busy=true;notifyListeners();try{final r=await _api!.createBooking(body).timeout(const Duration(seconds:12));final b=PassengerBooking.fromJson(Map<String,dynamic>.from(r['booking'] as Map));bookings.insert(0,b);activeBooking=b;notifyListeners();unawaited(_connectBooking(b.id));unawaited(refreshBooking(b.id,silent:true));return b;}finally{busy=false;notifyListeners();}}
++  Future<PassengerBooking> createDelivery(Map<String,Object?> body) async {
++    final api=_api;if(api==null)throw const ApiException('Not connected.');
++    busy=true;errorMessage=null;notifyListeners();
++    try{
++      final r=await api.createDelivery(body).timeout(const Duration(seconds:15));
++      final raw=r['job'];
++      if(raw is! Map)throw const ApiException('Invalid delivery response.');
++      final b=PassengerBooking.fromJson(Map<String,dynamic>.from(raw));
++      final i=bookings.indexWhere((item)=>item.id==b.id);
++      if(i>=0)bookings[i]=b;else bookings.insert(0,b);
++      activeBooking=b;
++      notifyListeners();
++      unawaited(_connectBooking(b.id));
++      unawaited(refreshBooking(b.id,silent:true));
++      return b;
++    }finally{busy=false;notifyListeners();}
++  }
+   Future<Map<String,dynamic>> payment(int id)=>_api!.payment(id);
+   Future<void> cancel(int id) async {await _api!.cancel(id);await refreshBooking(id);}
+   Future<void> rate(int id,int stars,String comment) async {await _api!.rate(id,stars,comment);await refreshBooking(id);}
+diff -ruN old/passenger/pubspec.yaml new/passenger/pubspec.yaml
+--- old/passenger/pubspec.yaml	2026-10-09 09:56:59.000000000 +0000
++++ new/passenger/pubspec.yaml	2026-10-09 10:16:47.385525061 +0000
+@@ -1,7 +1,7 @@
+ name: gaotus_mobility_passenger
+ description: Passenger app for Gaotus Mobility Platform.
+ publish_to: none
+-version: 0.5.7+18
++version: 0.5.8+19
+ environment:
+   sdk: '>=3.4.0 <4.0.0'
+ dependencies:
