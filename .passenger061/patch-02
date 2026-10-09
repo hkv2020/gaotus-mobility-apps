@@ -1,0 +1,68 @@
++    if (quote == null || !mounted) return;
++    final confirmed = await showDialog<bool>(
++      context: context,
++      builder: (context) => AlertDialog(
++        title: Text('Confirm delivery'.tr),
++        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
++          Text('${'Delivery price'.tr}: ${quote.priceLabel}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
++          const SizedBox(height: 8),
++          Text('${quote.distance.toStringAsFixed(1)} ${quote.distanceUnit} · ${quote.durationMinutes.toStringAsFixed(0)} min'),
++          const SizedBox(height: 8),
++          Text('Price is calculated by the platform and rechecked when the delivery is created.'.tr),
++        ]),
++        actions: <Widget>[
++          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Cancel'.tr)),
++          FilledButton(onPressed: () => Navigator.pop(context, true), child: Text('Confirm delivery'.tr)),
++        ],
++      ),
++    );
++    if (confirmed != true || !mounted) return;
++    final body = _buildBody();
++    if (body == null) return;
+     try {
+       final job = await widget.session.createDelivery(body);
+       if (!mounted) return;
+@@ -162,7 +218,7 @@
+                 value: locationLoading ? 'Finding your location…' : (pickup?.address ?? 'Choose collection address'),
+                 onTap: () async {
+                   final value = await _choose('Collection address', bias: pickup);
+-                  if (value != null && mounted) setState(() => pickup = value);
++                  if (value != null && mounted) setState(() { pickup = value; deliveryQuote = null; });
+                 },
+               ),
+               const SizedBox(height: 10),
+@@ -172,7 +228,7 @@
+                 value: destination?.address ?? 'Choose delivery address',
+                 onTap: () async {
+                   final value = await _choose('Delivery address', bias: pickup);
+-                  if (value != null && mounted) setState(() => destination = value);
++                  if (value != null && mounted) setState(() { destination = value; deliveryQuote = null; });
+                 },
+               ),
+               const SizedBox(height: 18),
+@@ -192,11 +248,11 @@
+                     value: packageSize,
+                     decoration: const InputDecoration(labelText: 'Size'),
+                     items: const <String>['Small', 'Medium', 'Large', 'XL'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+-                    onChanged: (v) => setState(() => packageSize = v ?? packageSize),
++                    onChanged: (v) => setState(() { packageSize = v ?? packageSize; deliveryQuote = null; }),
+                   ),
+                 ),
+                 const SizedBox(width: 10),
+-                Expanded(child: TextField(controller: weight, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Weight kg'))),
++                Expanded(child: TextField(controller: weight, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => _invalidateQuote(), decoration: const InputDecoration(labelText: 'Weight kg'))),
+               ]),
+               const SizedBox(height: 10),
+               Row(children: <Widget>[
+@@ -207,24 +263,56 @@
+                   padding: const EdgeInsets.symmetric(horizontal: 10),
+                   decoration: BoxDecoration(border: Border.all(color: const Color(0xFFDFDFDC)), borderRadius: BorderRadius.circular(18)),
+                   child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
+-                    IconButton(onPressed: packageCount <= 1 ? null : () => setState(() => packageCount--), icon: const Icon(Icons.remove_rounded)),
++                    IconButton(onPressed: packageCount <= 1 ? null : () => setState(() { packageCount--; deliveryQuote = null; }), icon: const Icon(Icons.remove_rounded)),
+                     Text('$packageCount', style: const TextStyle(fontWeight: FontWeight.w900)),
+-                    IconButton(onPressed: packageCount >= 20 ? null : () => setState(() => packageCount++), icon: const Icon(Icons.add_rounded)),
++                    IconButton(onPressed: packageCount >= 20 ? null : () => setState(() { packageCount++; deliveryQuote = null; }), icon: const Icon(Icons.add_rounded)),
+                   ]),
+                 ),
+               ]),
