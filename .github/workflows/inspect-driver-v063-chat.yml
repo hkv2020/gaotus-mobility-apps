@@ -1,0 +1,46 @@
+name: Inspect Driver v0.6.3 Chat
+on:
+  push:
+    branches: [ unified-operations-dev ]
+    paths: [ '.github/workflows/inspect-driver-v063-chat.yml' ]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct current driver source
+        run: |
+          { head -c 12000 .driver050final/chunk-00.b64; cat .driver050final/chunk-01.b64 .driver050final/chunk-02.b64 .driver050final/chunk-03.b64 .driver050final/chunk-04.b64 .driver050final/chunk-05.b64; } | base64 -d > /tmp/driver050.zip
+          unzip -q /tmp/driver050.zip -d /tmp/driver050
+          cp -a /tmp/driver050/gaotus-mobility-driver-v0.5.0 ./driver
+          patch -p1 -d driver < .driver051/driver-v051-signin.patch
+          python3 .driver052/patch052.py
+          python3 .driver053/patch053.py
+          python3 .driver054/patch054.py
+          python3 .driver055/patch055.py
+          python3 .driver056/patch056.py
+          python3 .driver057/patch057.py
+          python3 .driver058/patch058.py
+          python3 .driver059/patch059.py
+          python3 .driver059fix/patch059fix.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64,zlib
+          Path('/tmp/driver060.patch').write_bytes(zlib.decompress(base64.b64decode(Path('.driver060/driver-v060.patch.zlib.b64').read_text().strip())))
+          PY
+          patch -p1 -d driver < /tmp/driver060.patch
+          python3 .driver061/patch061.py
+          python3 .localization-pack/patch_localization.py driver
+          python3 .localization-pack/fix_runtime_const.py driver
+          patch -p1 -d driver < .driver063/driver-v063-identity-earnings-chat.patch
+          python3 .driver063/fix063.py
+      - name: Show chat source
+        run: |
+          echo 'DRIVER_CHAT_START'
+          cat driver/lib/screens/chat_screen.dart
+          echo 'DRIVER_NOTIFICATION_START'
+          cat driver/lib/services/offer_notification_service.dart
+          echo 'DRIVER_SESSION_CHAT_START'
+          grep -n -C 18 -E 'chatAlert|chatMessages|sendChat|showMessage|chat.message' driver/lib/state/app_session.dart || true
