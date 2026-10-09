@@ -1,6 +1,9 @@
 name: Inspect Passenger v0.6.2 Flow
 on:
   workflow_dispatch:
+  push:
+    branches: [ unified-operations-dev ]
+    paths: [ '.github/workflows/inspect-passenger-v062-flow.yml' ]
 permissions:
   contents: read
 jobs:
