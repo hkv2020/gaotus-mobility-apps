@@ -49,6 +49,7 @@ jobs:
 
       - name: Apply Driver v0.6.2 Localization Pack
         run: |
+          # Runtime localization must preserve Dart const defaults/state declarations.
           python3 .localization-pack/patch_localization.py driver
           python3 .localization-pack/fix_runtime_const.py driver
           grep -q 'version: 0.6.2+17' driver/pubspec.yaml
