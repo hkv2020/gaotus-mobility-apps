@@ -1,0 +1,22 @@
+   Future<PassengerBooking> createBooking(VehicleQuote vehicle,{String paymentMethod='online'}) async {if(_api==null||lastQuoteRequest==null)throw const ApiException('Request a fare first.');final body=<String,Object?>{...lastQuoteRequest!,'vehicle_id':vehicle.id,'payment_method':paymentMethod,'terms_accept':true};busy=true;notifyListeners();try{final r=await _api!.createBooking(body).timeout(const Duration(seconds:12));final b=PassengerBooking.fromJson(Map<String,dynamic>.from(r['booking'] as Map));bookings.insert(0,b);activeBooking=b;notifyListeners();unawaited(_connectBooking(b.id));unawaited(refreshBooking(b.id,silent:true));return b;}finally{busy=false;notifyListeners();}}
++  Future<DeliveryQuote> deliveryQuote(Map<String,Object?> body) async {
++    final api=_api;if(api==null)throw const ApiException('Not connected.');
++    busy=true;errorMessage=null;notifyListeners();
++    try{return DeliveryQuote.fromJson(await api.deliveryQuote(body).timeout(const Duration(seconds:20)));}
++    finally{busy=false;notifyListeners();}
++  }
+   Future<PassengerBooking> createDelivery(Map<String,Object?> body) async {
+     final api=_api;if(api==null)throw const ApiException('Not connected.');
+     busy=true;errorMessage=null;notifyListeners();
+diff -ruN '--exclude=.dart_tool' '--exclude=build' passenger060/pubspec.yaml passenger061/pubspec.yaml
+--- passenger060/pubspec.yaml	2026-10-09 15:36:08.000000000 +0000
++++ passenger061/pubspec.yaml	2026-10-09 17:28:52.093099264 +0000
+@@ -1,7 +1,7 @@
+ name: gaotus_mobility_passenger
+ description: Passenger app for Gaotus Mobility Platform.
+ publish_to: none
+-version: 0.6.0+21
++version: 0.6.1+22
+ environment:
+   sdk: '>=3.4.0 <4.0.0'
+ dependencies:
