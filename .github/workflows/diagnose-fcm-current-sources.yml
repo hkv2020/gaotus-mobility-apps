@@ -1,0 +1,103 @@
+name: Diagnose current Mobility FCM integration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ chat-notifications-hotfix ]
+    paths:
+      - '.github/workflows/diagnose-fcm-current-sources.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct Passenger v0.6.4
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          path=Path('.github/workflows/build-passenger-v057.yml')
+          lines=path.read_text().splitlines(); blocks=[]; i=0
+          while i < len(lines):
+              if 'uses: actions/setup-java@v4' in lines[i]: break
+              if lines[i].startswith('        run: |'):
+                  i+=1; body=[]
+                  while i < len(lines):
+                      cur=lines[i]
+                      if cur.startswith('      - '): break
+                      if cur.startswith('          '): body.append(cur[10:])
+                      elif cur.strip()=='': body.append('')
+                      else: body.append(cur.lstrip())
+                      i+=1
+                  blocks.append('\n'.join(body)); continue
+              i+=1
+          for block in blocks: subprocess.run(['bash','-euo','pipefail','-c',block],check=True)
+          PY
+          cat .passenger058/patch-00 .passenger058/patch-01 .passenger058/patch-02 .passenger058/patch-03 > /tmp/p058.patch
+          patch -p2 -d passenger < /tmp/p058.patch
+          python3 .passenger059/patch059.py
+          python3 .localization-pack/patch_localization.py passenger
+          python3 .localization-pack/fix_runtime_const.py passenger
+          cat .passenger061/patch-00 .passenger061/patch-01 .passenger061/patch-02 .passenger061/patch-03 .passenger061/patch-04 > /tmp/p061.patch
+          patch -p1 -d passenger < /tmp/p061.patch
+          patch -p1 -d passenger < .passenger062/passenger-v062-driver-identity-chat.patch
+          python3 .passenger062/fix062.py
+          python3 .passenger063/fix063.py
+          python3 .passenger064/fix064.py
+      - name: Reconstruct Driver v0.6.5
+        run: |
+          { head -c 12000 .driver050final/chunk-00.b64; cat .driver050final/chunk-01.b64 .driver050final/chunk-02.b64 .driver050final/chunk-03.b64 .driver050final/chunk-04.b64 .driver050final/chunk-05.b64; } | base64 -d > /tmp/driver050.zip
+          rm -rf /tmp/driver051 driver
+          mkdir -p /tmp/driver051
+          unzip -q /tmp/driver050.zip -d /tmp/driver051
+          cp -a /tmp/driver051/gaotus-mobility-driver-v0.5.0 ./driver
+          patch -p1 -d driver < .driver051/driver-v051-signin.patch
+          python3 .driver052/patch052.py
+          python3 .driver053/patch053.py
+          python3 .driver054/patch054.py
+          python3 .driver055/patch055.py
+          python3 .driver056/patch056.py
+          python3 .driver057/patch057.py
+          python3 .driver058/patch058.py
+          python3 .driver059/patch059.py
+          python3 .driver060/patch060.py
+          python3 .country-aware/patch_driver061.py
+          python3 .localization-pack/patch_localization.py driver
+          python3 .driver063/fix063.py
+          python3 .driver064/fix064.py
+          python3 .driver065/fix065.py
+      - name: Print FCM-relevant Passenger source
+        run: |
+          echo '=== PASSENGER PUBSPEC ==='
+          grep -nE 'firebase|flutter_local_notifications|version:' passenger/pubspec.yaml || true
+          echo '=== PASSENGER MAIN ==='
+          sed -n '1,220p' passenger/lib/main.dart || true
+          echo '=== PASSENGER NOTIFICATION SERVICE ==='
+          sed -n '1,320p' passenger/lib/services/passenger_notification_service.dart || true
+          echo '=== PASSENGER TOKEN/API SEARCH ==='
+          grep -RniE 'fcm|firebase|push.?token|device.?token|register.?device|notification.?token' passenger/lib | head -200 || true
+          echo '=== PASSENGER API ROUTES ==='
+          grep -RniE "post\(|put\(|/customer/|/auth/|token" passenger/lib/core passenger/lib/state | head -250 || true
+          echo '=== PASSENGER ANDROID GRADLE ==='
+          cat passenger/android/settings.gradle.kts 2>/dev/null || cat passenger/android/settings.gradle 2>/dev/null || true
+          cat passenger/android/app/build.gradle.kts 2>/dev/null || cat passenger/android/app/build.gradle 2>/dev/null || true
+      - name: Print FCM-relevant Driver source
+        run: |
+          echo '=== DRIVER PUBSPEC ==='
+          grep -nE 'firebase|flutter_local_notifications|version:' driver/pubspec.yaml || true
+          echo '=== DRIVER MAIN ==='
+          sed -n '1,220p' driver/lib/main.dart || true
+          echo '=== DRIVER NOTIFICATION SERVICE ==='
+          sed -n '1,360p' driver/lib/services/offer_notification_service.dart || true
+          echo '=== DRIVER TOKEN/API SEARCH ==='
+          grep -RniE 'fcm|firebase|push.?token|device.?token|register.?device|notification.?token' driver/lib | head -250 || true
+          echo '=== DRIVER API ROUTES ==='
+          grep -RniE "post\(|put\(|/driver/|/auth/|token" driver/lib/core driver/lib/state | head -300 || true
+          echo '=== DRIVER ANDROID GRADLE ==='
+          cat driver/android/settings.gradle.kts 2>/dev/null || cat driver/android/settings.gradle 2>/dev/null || true
+          cat driver/android/app/build.gradle.kts 2>/dev/null || cat driver/android/app/build.gradle 2>/dev/null || true
