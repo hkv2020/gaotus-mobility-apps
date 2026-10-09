@@ -52,10 +52,11 @@ jobs:
       - name: Reconstruct Driver v0.6.5
         run: |
           { head -c 12000 .driver050final/chunk-00.b64; cat .driver050final/chunk-01.b64 .driver050final/chunk-02.b64 .driver050final/chunk-03.b64 .driver050final/chunk-04.b64 .driver050final/chunk-05.b64; } | base64 -d > /tmp/driver050.zip
-          rm -rf /tmp/driver051 driver
-          mkdir -p /tmp/driver051
-          unzip -q /tmp/driver050.zip -d /tmp/driver051
-          cp -a /tmp/driver051/gaotus-mobility-driver-v0.5.0 ./driver
+          unzip -t /tmp/driver050.zip
+          rm -rf /tmp/driver050 driver
+          mkdir -p /tmp/driver050
+          unzip -q /tmp/driver050.zip -d /tmp/driver050
+          cp -a /tmp/driver050/gaotus-mobility-driver-v0.5.0 ./driver
           patch -p1 -d driver < .driver051/driver-v051-signin.patch
           python3 .driver052/patch052.py
           python3 .driver053/patch053.py
@@ -65,9 +66,17 @@ jobs:
           python3 .driver057/patch057.py
           python3 .driver058/patch058.py
           python3 .driver059/patch059.py
-          python3 .driver060/patch060.py
-          python3 .country-aware/patch_driver061.py
+          python3 .driver059fix/patch059fix.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64,zlib
+          Path('/tmp/driver060.patch').write_bytes(zlib.decompress(base64.b64decode(Path('.driver060/driver-v060.patch.zlib.b64').read_text().strip())))
+          PY
+          patch -p1 -d driver < /tmp/driver060.patch
+          python3 .driver061/patch061.py
           python3 .localization-pack/patch_localization.py driver
+          python3 .localization-pack/fix_runtime_const.py driver
+          patch -p1 -d driver < .driver063/driver-v063-identity-earnings-chat.patch
           python3 .driver063/fix063.py
           python3 .driver064/fix064.py
           python3 .driver065/fix065.py
@@ -78,11 +87,11 @@ jobs:
           echo '=== PASSENGER MAIN ==='
           sed -n '1,220p' passenger/lib/main.dart || true
           echo '=== PASSENGER NOTIFICATION SERVICE ==='
-          sed -n '1,320p' passenger/lib/services/passenger_notification_service.dart || true
+          sed -n '1,360p' passenger/lib/services/passenger_notification_service.dart || true
           echo '=== PASSENGER TOKEN/API SEARCH ==='
-          grep -RniE 'fcm|firebase|push.?token|device.?token|register.?device|notification.?token' passenger/lib | head -200 || true
+          grep -RniE 'fcm|firebase|push.?token|device.?token|register.?device|notification.?token' passenger/lib | head -250 || true
           echo '=== PASSENGER API ROUTES ==='
-          grep -RniE "post\(|put\(|/customer/|/auth/|token" passenger/lib/core passenger/lib/state | head -250 || true
+          grep -RniE "post\(|put\(|/customer/|/auth/|token" passenger/lib/core passenger/lib/state | head -300 || true
           echo '=== PASSENGER ANDROID GRADLE ==='
           cat passenger/android/settings.gradle.kts 2>/dev/null || cat passenger/android/settings.gradle 2>/dev/null || true
           cat passenger/android/app/build.gradle.kts 2>/dev/null || cat passenger/android/app/build.gradle 2>/dev/null || true
@@ -93,11 +102,11 @@ jobs:
           echo '=== DRIVER MAIN ==='
           sed -n '1,220p' driver/lib/main.dart || true
           echo '=== DRIVER NOTIFICATION SERVICE ==='
-          sed -n '1,360p' driver/lib/services/offer_notification_service.dart || true
+          sed -n '1,420p' driver/lib/services/offer_notification_service.dart || true
           echo '=== DRIVER TOKEN/API SEARCH ==='
-          grep -RniE 'fcm|firebase|push.?token|device.?token|register.?device|notification.?token' driver/lib | head -250 || true
+          grep -RniE 'fcm|firebase|push.?token|device.?token|register.?device|notification.?token' driver/lib | head -300 || true
           echo '=== DRIVER API ROUTES ==='
-          grep -RniE "post\(|put\(|/driver/|/auth/|token" driver/lib/core driver/lib/state | head -300 || true
+          grep -RniE "post\(|put\(|/driver/|/auth/|token" driver/lib/core driver/lib/state | head -350 || true
           echo '=== DRIVER ANDROID GRADLE ==='
           cat driver/android/settings.gradle.kts 2>/dev/null || cat driver/android/settings.gradle 2>/dev/null || true
           cat driver/android/app/build.gradle.kts 2>/dev/null || cat driver/android/app/build.gradle 2>/dev/null || true
