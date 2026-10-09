@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "255728549219",
+    "project_id": "mobility-9c69a",
+    "storage_bucket": "mobility-9c69a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:255728549219:android:b631fbad180c430b76a756",
+        "android_client_info": {
+          "package_name": "com.gaotus.mobility.driver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDXyKSa_bDoRxnCzJbVeTNRNf59-aoyLpo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:255728549219:android:f40b60aaa59afc4576a756",
+        "android_client_info": {
+          "package_name": "com.gaotus.mobility.passenger"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDXyKSa_bDoRxnCzJbVeTNRNf59-aoyLpo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
