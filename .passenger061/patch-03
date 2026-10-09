@@ -1,0 +1,64 @@
+               const SizedBox(height: 10),
++              DropdownButtonFormField<String>(
++                value: serviceLevel,
++                decoration: InputDecoration(labelText: 'Service'.tr),
++                items: <DropdownMenuItem<String>>[
++                  DropdownMenuItem(value: 'standard', child: Text('Standard'.tr)),
++                  DropdownMenuItem(value: 'urgent', child: Text('Urgent / same-day'.tr)),
++                ],
++                onChanged: (v) => setState(() { serviceLevel = v ?? serviceLevel; deliveryQuote = null; }),
++              ),
++              const SizedBox(height: 10),
+               TextField(controller: notes, maxLines: 3, decoration: const InputDecoration(labelText: 'Delivery instructions', hintText: 'Access code, fragile parcel, leave with reception…')),
+-              const SizedBox(height: 22),
++              const SizedBox(height: 18),
++              OutlinedButton.icon(
++                onPressed: quoteLoading || widget.session.busy ? null : _getQuote,
++                icon: quoteLoading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.calculate_outlined),
++                label: Text('Get delivery price'.tr),
++              ),
++              if (deliveryQuote != null) ...<Widget>[
++                const SizedBox(height: 12),
++                Container(
++                  padding: const EdgeInsets.all(16),
++                  decoration: BoxDecoration(color: const Color(0xFFF3F3F1), borderRadius: BorderRadius.circular(18)),
++                  child: Row(children: <Widget>[
++                    const Icon(Icons.payments_outlined),
++                    const SizedBox(width: 12),
++                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
++                      Text('Delivery price'.tr, style: const TextStyle(color: AppTheme.softInk, fontWeight: FontWeight.w700)),
++                      Text(deliveryQuote!.priceLabel, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
++                      Text('${deliveryQuote!.distance.toStringAsFixed(1)} ${deliveryQuote!.distanceUnit} · ${deliveryQuote!.durationMinutes.toStringAsFixed(0)} min', style: const TextStyle(color: AppTheme.softInk)),
++                    ])),
++                  ]),
++                ),
++              ],
++              const SizedBox(height: 18),
+               FilledButton.icon(
+                 onPressed: widget.session.busy ? null : _submit,
+                 icon: const Icon(Icons.local_shipping_outlined),
+                 label: widget.session.busy
+                     ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
+-                    : const Text('Request delivery'),
++                    : Text('Confirm delivery'.tr),
+               ),
+               const SizedBox(height: 8),
+-              const Text('Delivery pricing can be connected to the same Mobility pricing/payment engine in the next pricing layer.', textAlign: TextAlign.center, style: TextStyle(color: AppTheme.softInk, fontSize: 12)),
++              Text('Price is calculated by the platform and rechecked when the delivery is created.'.tr, textAlign: TextAlign.center, style: const TextStyle(color: AppTheme.softInk, fontSize: 12)),
+             ],
+           ),
+         ),
+diff -ruN '--exclude=.dart_tool' '--exclude=build' passenger060/lib/state/passenger_session.dart passenger061/lib/state/passenger_session.dart
+--- passenger060/lib/state/passenger_session.dart	2026-10-09 15:36:08.000000000 +0000
++++ passenger061/lib/state/passenger_session.dart	2026-10-09 17:28:52.093348801 +0000
+@@ -9,6 +9,7 @@
+ import '../models/tracking.dart';
+ import '../models/nearby_car.dart';
+ import '../models/vehicle_quote.dart';
++import '../models/delivery_quote.dart';
+ import '../models/place_selection.dart';
+ import '../services/location_service.dart';
+ import '../services/push_service.dart';
+@@ -282,6 +283,12 @@
+ 
+   Future<FareQuote> quote(Map<String,Object?> request) async {if(_api==null)throw const ApiException('Not connected.');busy=true;errorMessage=null;notifyListeners();try{lastQuoteRequest=Map<String,Object?>.from(request);lastQuote=FareQuote.fromJson(await _api!.quote(request));return lastQuote!;}finally{busy=false;notifyListeners();}}
