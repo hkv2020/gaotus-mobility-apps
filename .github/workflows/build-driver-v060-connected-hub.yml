@@ -1,0 +1,115 @@
+name: Build Driver v0.6.0 Connected Hub
+
+on:
+  push:
+    branches: [ unified-operations-dev ]
+    paths:
+      - '.driver060/**'
+      - '.github/workflows/build-driver-v060-connected-hub.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-driver:
+    name: Driver v0.6.0 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct Driver v0.5.8 source
+        run: |
+          { head -c 12000 .driver050final/chunk-00.b64; cat .driver050final/chunk-01.b64 .driver050final/chunk-02.b64 .driver050final/chunk-03.b64 .driver050final/chunk-04.b64 .driver050final/chunk-05.b64; } | base64 -d > /tmp/driver050.zip
+          unzip -t /tmp/driver050.zip
+          rm -rf /tmp/driver051 driver
+          mkdir -p /tmp/driver051
+          unzip -q /tmp/driver050.zip -d /tmp/driver051
+          cp -a /tmp/driver051/gaotus-mobility-driver-v0.5.0 ./driver
+          patch -p1 -d driver < .driver051/driver-v051-signin.patch
+          python3 .driver052/patch052.py
+          python3 .driver053/patch053.py
+          python3 .driver054/patch054.py
+          python3 .driver055/patch055.py
+          python3 .driver056/patch056.py
+          python3 .driver057/patch057.py
+          python3 .driver058/patch058.py
+
+      - name: Reconstruct Driver v0.5.9 Unified Operations
+        run: |
+          python3 .driver059/patch059.py
+          python3 .driver059fix/patch059fix.py
+          grep -q 'version: 0.5.9+14' driver/pubspec.yaml
+          grep -q 'DriverChatScreen' driver/lib/screens/operations_job_screen.dart
+
+      - name: Apply Driver v0.6.0 Connected Hub
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, zlib
+          blob = Path('.driver060/driver-v060.patch.zlib.b64').read_text().strip()
+          patch = zlib.decompress(base64.b64decode(blob))
+          Path('/tmp/driver-v060.patch').write_bytes(patch)
+          print(f'patch bytes={len(patch)}')
+          PY
+          patch -p1 -d driver < /tmp/driver-v060.patch
+          grep -q 'version: 0.6.0+15' driver/pubspec.yaml
+          grep -q "static const String version = '0.6.0';" driver/lib/config/app_config.dart
+          grep -q 'DriverHelpScreen' driver/lib/screens/driver_hub_screens.dart
+          grep -q 'DriverDocumentsScreen' driver/lib/screens/driver_hub_screens.dart
+          grep -q 'DriverSettingsScreen' driver/lib/screens/driver_hub_screens.dart
+          grep -q "'/driver/app-hub'" driver/lib/core/api_client.dart
+          grep -q "'/driver/preferences'" driver/lib/core/api_client.dart
+          grep -q 'navigationProvider' driver/lib/screens/job_screen.dart
+          ! grep -R "will be connected to Platform data" driver/lib
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Prepare Android and analyze
+        working-directory: driver
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('tool/bootstrap_platforms.sh')
+          p.write_text(p.read_text().replace('flutter analyze', 'rm -rf test\nflutter analyze --no-fatal-infos'))
+          PY
+          bash tool/bootstrap_platforms.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle.kts')
+          s = p.read_text()
+          if 'isCoreLibraryDesugaringEnabled' not in s:
+              s = s.replace('compileOptions {', 'compileOptions {\n        isCoreLibraryDesugaringEnabled = true', 1)
+          if 'coreLibraryDesugaring(' not in s:
+              s += '\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
+          p.write_text(s)
+          PY
+          flutter analyze --no-fatal-infos
+
+      - name: Build APK
+        working-directory: driver
+        run: flutter build apk --release
+
+      - name: Package artifacts
+        run: |
+          cp driver/build/app/outputs/flutter-apk/app-release.apk Gaotus-Mobility-Driver-v0.6.0-Connected-Hub.apk
+          zip -qr Gaotus-Mobility-Driver-v0.6.0-Connected-Hub-SOURCE.zip driver -x 'driver/build/*' 'driver/.dart_tool/*'
+          sha256sum Gaotus-Mobility-Driver-v0.6.0-Connected-Hub.apk Gaotus-Mobility-Driver-v0.6.0-Connected-Hub-SOURCE.zip | tee SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaotus-Mobility-Driver-v0.6.0-Connected-Hub
+          path: |
+            Gaotus-Mobility-Driver-v0.6.0-Connected-Hub.apk
+            Gaotus-Mobility-Driver-v0.6.0-Connected-Hub-SOURCE.zip
+            SHA256SUMS.txt
+          if-no-files-found: error
