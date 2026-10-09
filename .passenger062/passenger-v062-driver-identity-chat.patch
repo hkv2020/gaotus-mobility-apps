@@ -1,0 +1,255 @@
+diff --git a/lib/config/app_config.dart b/lib/config/app_config.dart
+index 54545a7..3b72bbc 100644
+--- a/lib/config/app_config.dart
++++ b/lib/config/app_config.dart
+@@ -1,6 +1,6 @@
+ final class AppConfig {
+   static const appName = 'Gaotus Mobility';
+-  static const version = '0.6.1';
++  static const version = '0.6.2';
+   static const defaultServer = 'https://beaphoenix.eu';
+   static const namespace = '/wp-json/gaotus-mobility/v1';
+ 
+diff --git a/lib/core/localization.dart b/lib/core/localization.dart
+index 037f96a..3a6d802 100644
+--- a/lib/core/localization.dart
++++ b/lib/core/localization.dart
+@@ -206,6 +206,9 @@ class AppLocalization {
+     "Price is calculated by the platform and rechecked when the delivery is created.": "Prețul este calculat de platformă și reverificat la crearea livrării.",
+     "Standard": "Standard",
+     "Urgent / same-day": "Urgent / în aceeași zi",
++    "Urgent surcharge": "Supliment urgent",
++    "New message": "Mesaj nou",
++    "You have a new message.": "Ai primit un mesaj nou.",
+     "Service": "Serviciu",
+     "Choose collection and delivery addresses.": "Alege adresele de ridicare și livrare.",
+     "Add recipient name and phone number.": "Adaugă numele și telefonul destinatarului.",
+diff --git a/lib/models/delivery_quote.dart b/lib/models/delivery_quote.dart
+index 27070de..a70031f 100644
+--- a/lib/models/delivery_quote.dart
++++ b/lib/models/delivery_quote.dart
+@@ -7,6 +7,8 @@ final class DeliveryQuote {
+     required this.distanceUnit,
+     required this.durationMinutes,
+     this.priceFormatted = '',
++    this.serviceLevel = 'standard',
++    this.serviceLevelLabel = 'Standard',
+     this.breakdown = const <String, dynamic>{},
+   });
+ 
+@@ -15,8 +17,12 @@ final class DeliveryQuote {
+   final double distance;
+   final String distanceUnit;
+   final double durationMinutes;
++  final String serviceLevel;
++  final String serviceLevelLabel;
+   final Map<String, dynamic> breakdown;
+ 
++  double get urgentFee => (breakdown['urgent_fee'] as num?)?.toDouble() ?? double.tryParse('${breakdown['urgent_fee']}') ?? 0;
++
+   String get priceLabel => priceFormatted.isNotEmpty ? priceFormatted : CountryConfig.money(price);
+ 
+   factory DeliveryQuote.fromJson(Map<String, dynamic> j) => DeliveryQuote(
+@@ -25,6 +31,8 @@ final class DeliveryQuote {
+         distance: (j['distance'] as num?)?.toDouble() ?? double.tryParse('${j['distance']}') ?? 0,
+         distanceUnit: (j['distance_unit'] ?? (CountryConfig.units == 'imperial' ? 'mi' : 'km')).toString(),
+         durationMinutes: (j['duration_minutes'] as num?)?.toDouble() ?? double.tryParse('${j['duration_minutes']}') ?? 0,
++        serviceLevel: (j['service_level'] ?? 'standard').toString(),
++        serviceLevelLabel: (j['service_level_label'] ?? 'Standard').toString(),
+         breakdown: j['breakdown'] is Map ? Map<String, dynamic>.from(j['breakdown'] as Map) : <String, dynamic>{},
+       );
+ }
+diff --git a/lib/screens/chat_screen.dart b/lib/screens/chat_screen.dart
+index 4350395..64f54ed 100644
+--- a/lib/screens/chat_screen.dart
++++ b/lib/screens/chat_screen.dart
+@@ -25,6 +25,7 @@ class _PassengerChatScreenState extends State<PassengerChatScreen> {
+   @override
+   void initState() {
+     super.initState();
++    widget.session.clearChatAlert(widget.bookingId);
+     unawaited(_load(initial: true));
+     _timer = Timer.periodic(const Duration(seconds: 4), (_) => unawaited(_load()));
+   }
+diff --git a/lib/screens/delivery_screen.dart b/lib/screens/delivery_screen.dart
+index 890af93..285f716 100644
+--- a/lib/screens/delivery_screen.dart
++++ b/lib/screens/delivery_screen.dart
+@@ -258,13 +258,17 @@ class _DriverCard extends StatelessWidget {
+ 
+   @override
+   Widget build(BuildContext context) {
++    final photo = (driver['photo'] ?? driver['avatar_url'] ?? '').toString();
+     final vehicle = '${driver['vehicle_make'] ?? ''} ${driver['vehicle_model'] ?? ''}'.trim();
+     final plate = (driver['vehicle_plate'] ?? '').toString();
+     return Row(children: <Widget>[
+-      const CircleAvatar(radius: 28, backgroundColor: Color(0xFFF0F0ED), child: Icon(Icons.person_rounded, size: 30)),
++      CircleAvatar(radius: 30, backgroundColor: const Color(0xFFF0F0ED), backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null, child: photo.isEmpty ? const Icon(Icons.person_rounded, size: 30) : null),
+       const SizedBox(width: 12),
+       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+-        Text((driver['name'] ?? 'Your driver'.tr).toString(), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
++        Row(children: <Widget>[
++          Flexible(child: Text((driver['name'] ?? 'Your driver'.tr).toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900))),
++          if (driver['rating'] is num) ...<Widget>[const SizedBox(width: 6), const Icon(Icons.star_rounded, size: 16, color: AppTheme.accent), Text('${driver['rating']}', style: const TextStyle(fontWeight: FontWeight.w800))],
++        ]),
+         Text([vehicle, plate].where((e) => e.isNotEmpty).join(' · '), style: const TextStyle(color: AppTheme.softInk)),
+       ])),
+       IconButton.filledTonal(onPressed: onCall, icon: const Icon(Icons.call_rounded)),
+diff --git a/lib/screens/home_screen.dart b/lib/screens/home_screen.dart
+index ebee93d..4686473 100644
+--- a/lib/screens/home_screen.dart
++++ b/lib/screens/home_screen.dart
+@@ -14,6 +14,7 @@ import 'quote_screen.dart';
+ import 'trip_screen.dart';
+ import 'delivery_screen.dart';
+ import 'send_parcel_screen.dart';
++import 'chat_screen.dart';
+ import '../core/country_config.dart';
+ 
+ import '../core/localization.dart';
+@@ -38,10 +39,12 @@ class _HomeScreenState extends State<HomeScreen> {
+   final String destinationSessionToken = 'gmp_inline_${DateTime.now().microsecondsSinceEpoch}';
+   LatLng center = const LatLng(51.5074, -0.1278);
+   DateTime pickupAt = DateTime.now().add(const Duration(minutes: 10));
++  int _lastChatAlertSequence=0;
+ 
+   @override
+   void initState() {
+     super.initState();
++    widget.session.addListener(_sessionChanged);
+     pickup.text = 'Current location';
+     WidgetsBinding.instance.addPostFrameCallback((_) {
+       _primeLocation();
+@@ -51,12 +54,27 @@ class _HomeScreenState extends State<HomeScreen> {
+ 
+   @override
+   void dispose() {
++    widget.session.removeListener(_sessionChanged);
+     nearbyTimer?.cancel();
+     pickup.dispose();
+     dropoff.dispose();
+     super.dispose();
+   }
+ 
++  void _sessionChanged(){
++    final sequence=widget.session.chatAlertSequence;
++    if(sequence<=_lastChatAlertSequence||!mounted)return;
++    _lastChatAlertSequence=sequence;
++    final bookingId=widget.session.chatAlertBookingId;
++    final title=widget.session.chatAlertTitle;
++    final preview=widget.session.chatAlertPreview;
++    WidgetsBinding.instance.addPostFrameCallback((_){
++      if(!mounted)return;
++      final messenger=ScaffoldMessenger.of(context);messenger.hideCurrentSnackBar();
++      messenger.showSnackBar(SnackBar(duration:const Duration(seconds:9),behavior:SnackBarBehavior.floating,content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:<Widget>[Text(title.isEmpty?'Message from your driver'.tr:title,style:const TextStyle(fontWeight:FontWeight.w900)),if(preview.isNotEmpty)Text(preview,maxLines:2,overflow:TextOverflow.ellipsis)]),action:bookingId>0?SnackBarAction(label:'OPEN',onPressed:()=>Navigator.of(context).push(MaterialPageRoute<void>(builder:(_)=>PassengerChatScreen(session:widget.session,bookingId:bookingId)))):null));
++    });
++  }
++
+   Future<void> _refreshNearby() async {
+     if(!mounted||widget.session.activeBooking!=null)return;
+     final lat=pickupLat??center.latitude;
+@@ -245,7 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
+             ListTile(leading: const Icon(Icons.refresh_rounded), title: const Text('Refresh rides'), onTap: () { Navigator.pop(sheetContext); s.refreshBookings(); }),
+             ListTile(leading: const Icon(Icons.help_outline_rounded), title: const Text('Help & safety'), subtitle: const Text('Coming in the next UI sprint'), onTap: () {}),
+             const Divider(),
+-            const ListTile(leading: Icon(Icons.info_outline_rounded), title: Text('Passenger v0.5.8'), subtitle: Text('Unified rides + parcel delivery with live operations tracking')),
++            const ListTile(leading: Icon(Icons.info_outline_rounded), title: Text('Passenger v0.6.2'), subtitle: Text('Unified rides + parcel delivery with driver identity, pricing and chat alerts')),
+             ListTile(leading: const Icon(Icons.logout_rounded), title: const Text('Sign out'), onTap: () { Navigator.pop(sheetContext); s.logout(); }),
+           ]),
+         ),
+diff --git a/lib/screens/send_parcel_screen.dart b/lib/screens/send_parcel_screen.dart
+index a75706c..00e4c87 100644
+--- a/lib/screens/send_parcel_screen.dart
++++ b/lib/screens/send_parcel_screen.dart
+@@ -298,7 +298,8 @@ class _SendParcelScreenState extends State<SendParcelScreen> {
+                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+                       Text('Delivery price'.tr, style: const TextStyle(color: AppTheme.softInk, fontWeight: FontWeight.w700)),
+                       Text(deliveryQuote!.priceLabel, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+-                      Text('${deliveryQuote!.distance.toStringAsFixed(1)} ${deliveryQuote!.distanceUnit} · ${deliveryQuote!.durationMinutes.toStringAsFixed(0)} min', style: const TextStyle(color: AppTheme.softInk)),
++                      Text('${deliveryQuote!.serviceLevelLabel} · ${deliveryQuote!.distance.toStringAsFixed(1)} ${deliveryQuote!.distanceUnit} · ${deliveryQuote!.durationMinutes.toStringAsFixed(0)} min', style: const TextStyle(color: AppTheme.softInk)),
++                      if (deliveryQuote!.urgentFee > 0) Text('${'Urgent surcharge'.tr}: ${widget.session.money(deliveryQuote!.urgentFee)}', style: const TextStyle(color: AppTheme.softInk, fontWeight: FontWeight.w700)),
+                     ])),
+                   ]),
+                 ),
+diff --git a/lib/state/passenger_session.dart b/lib/state/passenger_session.dart
+index 4d3c5d3..8f920c1 100644
+--- a/lib/state/passenger_session.dart
++++ b/lib/state/passenger_session.dart
+@@ -33,6 +33,11 @@ final class PassengerSession extends ChangeNotifier {
+   bool _bookingRefreshInFlight=false;
+   DateTime? _nearbyLastNonEmptyAt;
+   final Map<int,String> _lastNotifiedStatus=<int,String>{};
++  int chatAlertSequence=0;
++  int chatAlertBookingId=0;
++  String chatAlertTitle='';
++  String chatAlertPreview='';
++  int _lastChatAlertEventId=0;
+   bool booting=true,busy=false,authenticated=false,realtimeConnected=false;
+   String serverUrl=AppConfig.defaultServer;
+   String? token,realtimeUrl,errorMessage;
+@@ -58,10 +63,17 @@ final class PassengerSession extends ChangeNotifier {
+         return;
+       }
+       final booking=activeBooking;
+-      if(type=='chat.message'&&booking!=null){
+-        final message=e['message'];
+-        final preview=message is Map?(message['message']??'').toString():'';
+-        unawaited(_notifications.showMessage(bookingId:booking.id,title:'Message from your driver'.tr,body:preview.isEmpty?'You have a new ride message.'.tr:preview));
++      if(type=='chat.message'){
++        final payload=e['payload'] is Map?Map<String,dynamic>.from(e['payload'] as Map):<String,dynamic>{};
++        final message=payload['message'] is Map?Map<String,dynamic>.from(payload['message'] as Map):(e['message'] is Map?Map<String,dynamic>.from(e['message'] as Map):<String,dynamic>{});
++        final bookingId=int.tryParse((e['booking_id']??payload['booking_id']??booking?.id??0).toString())??0;
++        final senderRole=(payload['sender_role']??message['sender_role']??'driver').toString();
++        final senderName=(message['sender_name']??payload['sender_name']??'').toString();
++        if(senderRole=='driver'){
++          final title=senderName.isNotEmpty?'${'Message from your driver'.tr} · $senderName':'Message from your driver'.tr;
++          final preview=(message['message']??payload['message_text']??'').toString();
++          _announceChatAlert(eventId:int.tryParse((e['event_id']??0).toString())??0,bookingId:bookingId,title:title,preview:preview);
++        }
+       }
+       if(booking!=null)unawaited(refreshBooking(booking.id,silent:true));
+     };
+@@ -72,7 +84,7 @@ final class PassengerSession extends ChangeNotifier {
+       final title=(d['notification_title']??'Gaotus Mobility').toString();
+       final body=(d['notification_body']??'Your ride has an update.'.tr).toString();
+       if(bookingId>0){
+-        if(type=='chat.message')unawaited(_notifications.showMessage(bookingId:bookingId,title:title,body:body));
++        if(type=='chat.message')_announceChatAlert(eventId:int.tryParse((d['event_id']??0).toString())??0,bookingId:bookingId,title:title,preview:body);
+         else unawaited(_notifications.showRideUpdate(bookingId:bookingId,title:title,body:body));
+       }
+       unawaited(refreshBookings(silent:true));
+@@ -107,6 +119,21 @@ final class PassengerSession extends ChangeNotifier {
+     }
+   }
+ 
++  void _announceChatAlert({required int eventId,required int bookingId,required String title,required String preview}){
++    if(eventId>0&&eventId==_lastChatAlertEventId)return;
++    if(eventId>0)_lastChatAlertEventId=eventId;
++    chatAlertBookingId=bookingId>0?bookingId:(activeBooking?.id??0);
++    chatAlertTitle=title.trim().isEmpty?'Message from your driver'.tr:title.trim();
++    chatAlertPreview=preview.trim().isEmpty?'You have a new message.'.tr:preview.trim();
++    chatAlertSequence++;
++    if(chatAlertBookingId>0)unawaited(_notifications.showMessage(bookingId:chatAlertBookingId,title:chatAlertTitle,body:chatAlertPreview));
++    notifyListeners();
++  }
++
++  void clearChatAlert(int bookingId){
++    if(chatAlertBookingId==bookingId){chatAlertBookingId=0;chatAlertTitle='';chatAlertPreview='';notifyListeners();}
++  }
++
+   Future<void> _finishAuthenticatedBoot() async {
+     try { await _discoverRealtime().timeout(const Duration(seconds:8)); } catch (_) {}
+     try { await _registerPush().timeout(const Duration(seconds:8)); } catch (_) {}
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 6fee771..6e22cb4 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -1,7 +1,7 @@
+ name: gaotus_mobility_passenger
+ description: Passenger app for Gaotus Mobility Platform.
+ publish_to: none
+-version: 0.6.1+22
++version: 0.6.2+23
+ environment:
+   sdk: '>=3.4.0 <4.0.0'
+ dependencies:
