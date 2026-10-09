@@ -1,0 +1,329 @@
+diff --git a/lib/config/app_config.dart b/lib/config/app_config.dart
+index 7d687e5..068c8fd 100644
+--- a/lib/config/app_config.dart
++++ b/lib/config/app_config.dart
+@@ -1,6 +1,6 @@
+ final class AppConfig {
+   static const String appName = 'Gaotus Mobility Driver';
+-  static const String version = '0.6.2';
++  static const String version = '0.6.3';
+   static const String namespace = '/wp-json/gaotus-mobility/v1';
+   static const String defaultServer = String.fromEnvironment(
+     'GMP_API_BASE',
+diff --git a/lib/core/localization.dart b/lib/core/localization.dart
+index 881853e..7f7e292 100644
+--- a/lib/core/localization.dart
++++ b/lib/core/localization.dart
+@@ -184,6 +184,13 @@ class AppLocalization {
+     "I have paid — refresh": "Am plătit — actualizează",
+     "Delivery route": "Ruta livrării",
+     "Message from your driver": "Mesaj de la șofer",
++    "Message from passenger": "Mesaj de la client",
++    "New message": "Mesaj nou",
++    "You have a new job message.": "Ai primit un mesaj nou pentru job.",
++    "Completed jobs": "Joburi finalizate",
++    "Jobs": "Joburi",
++    "Job value": "Valoare job",
++    "No completed jobs in this period.": "Nu există joburi finalizate în această perioadă.",
+     "You have a new ride message.": "Ai un mesaj nou despre cursă.",
+     "A driver has accepted your delivery.": "Un șofer a acceptat livrarea.",
+     "Your driver has accepted the ride.": "Șoferul a acceptat cursa.",
+diff --git a/lib/models/earnings_summary.dart b/lib/models/earnings_summary.dart
+index 15942cd..332c358 100644
+--- a/lib/models/earnings_summary.dart
++++ b/lib/models/earnings_summary.dart
+@@ -9,6 +9,8 @@ final class EarningsJob {
+     required this.grossTotal,
+     required this.driverFare,
+     required this.completedAt,
++    this.jobType = 'ride',
++    this.jobTypeLabel = 'Ride',
+   });
+ 
+   final int bookingId;
+@@ -17,6 +19,8 @@ final class EarningsJob {
+   final double grossTotal;
+   final double driverFare;
+   final String completedAt;
++  final String jobType;
++  final String jobTypeLabel;
+ 
+   factory EarningsJob.fromJson(Map<String, dynamic> json) => EarningsJob(
+         bookingId: intValue(json['booking_id']),
+@@ -25,6 +29,8 @@ final class EarningsJob {
+         grossTotal: doubleValue(json['gross_total']) ?? 0,
+         driverFare: doubleValue(json['driver_fare']) ?? 0,
+         completedAt: (json['completed_at'] ?? '').toString(),
++        jobType: (json['job_type'] ?? 'ride').toString(),
++        jobTypeLabel: (json['job_type_label'] ?? 'Ride').toString(),
+       );
+ }
+ 
+diff --git a/lib/screens/chat_screen.dart b/lib/screens/chat_screen.dart
+index 511ecce..90206b5 100644
+--- a/lib/screens/chat_screen.dart
++++ b/lib/screens/chat_screen.dart
+@@ -15,7 +15,7 @@ class _DriverChatScreenState extends State<DriverChatScreen>{
+   final _scroll=ScrollController();
+   final List<ChatMessage> _messages=[];
+   Timer? _timer; bool _loading=true,_sending=false; int _lastId=0; String? _error;
+-  @override void initState(){super.initState();unawaited(_load(initial:true));_timer=Timer.periodic(const Duration(seconds:4),(_)=>unawaited(_load()));}
++  @override void initState(){super.initState();widget.session.clearChatAlert(widget.bookingId);unawaited(_load(initial:true));_timer=Timer.periodic(const Duration(seconds:4),(_)=>unawaited(_load()));}
+   Future<void> _load({bool initial=false})async{try{final rows=await widget.session.chatMessages(widget.bookingId,afterId:initial?0:_lastId);if(!mounted)return;for(final m in rows){if(_messages.every((x)=>x.id!=m.id))_messages.add(m);if(m.id>_lastId)_lastId=m.id;}_messages.sort((a,b)=>a.id.compareTo(b.id));_error=null;if(rows.isNotEmpty)WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());}catch(e){if(mounted)_error='$e';}finally{if(mounted)setState(()=>_loading=false);}}
+   Future<void> _send()async{final text=_controller.text.trim();if(text.isEmpty||_sending)return;setState(()=>_sending=true);try{final m=await widget.session.sendChat(widget.bookingId,text);_controller.clear();if(_messages.every((x)=>x.id!=m.id))_messages.add(m);if(m.id>_lastId)_lastId=m.id;_error=null;WidgetsBinding.instance.addPostFrameCallback((_)=>_toBottom());}catch(e){_error='$e';}finally{if(mounted)setState(()=>_sending=false);}}
+   void _toBottom(){if(_scroll.hasClients)_scroll.animateTo(_scroll.position.maxScrollExtent,duration:const Duration(milliseconds:220),curve:Curves.easeOut);}
+diff --git a/lib/screens/driver_home_screen.dart b/lib/screens/driver_home_screen.dart
+index dcdd015..27cd4b5 100644
+--- a/lib/screens/driver_home_screen.dart
++++ b/lib/screens/driver_home_screen.dart
+@@ -61,6 +61,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
+     if (sequence <= _lastChatAlertSequence || !mounted) return;
+     _lastChatAlertSequence = sequence;
+     final preview = widget.session.chatAlertPreview;
++    final title = widget.session.chatAlertTitle;
+     final bookingId = widget.session.chatAlertBookingId > 0 ? widget.session.chatAlertBookingId : (widget.session.currentJob?.id ?? 0);
+     WidgetsBinding.instance.addPostFrameCallback((_) {
+       if (!mounted) return;
+@@ -74,7 +75,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with WidgetsBinding
+             children: <Widget>[
+               const Icon(Icons.chat_bubble_rounded, color: Colors.white),
+               const SizedBox(width: 10),
+-              Expanded(child: Text(preview.isEmpty ? 'New passenger message' : preview, maxLines: 2, overflow: TextOverflow.ellipsis)),
++              Expanded(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[Text(title.isEmpty ? 'Message from passenger'.tr : title, style: const TextStyle(fontWeight: FontWeight.w900)), if(preview.isNotEmpty) Text(preview, maxLines: 2, overflow: TextOverflow.ellipsis)])),
+             ],
+           ),
+           action: bookingId > 0
+diff --git a/lib/screens/driver_hub_screens.dart b/lib/screens/driver_hub_screens.dart
+index 8cf69d2..22fe738 100644
+--- a/lib/screens/driver_hub_screens.dart
++++ b/lib/screens/driver_hub_screens.dart
+@@ -84,7 +84,7 @@ class _HubPageState extends State<_HubPage> {
+                           physics: const AlwaysScrollableScrollPhysics(),
+                           padding: const EdgeInsets.fromLTRB(20, 18, 20, 38),
+                           children: <Widget>[
+-                            _HubHeader(icon: widget.icon, title: widget.title),
++                            _HubHeader(icon: widget.icon, title: widget.title, avatarUrl: _text(mapValue(hub['profile'])['avatar_url'])),
+                             const SizedBox(height: 18),
+                             widget.builder(context, hub),
+                           ],
+@@ -124,9 +124,10 @@ class _HubUnavailable extends StatelessWidget {
+ }
+ 
+ class _HubHeader extends StatelessWidget {
+-  const _HubHeader({required this.icon, required this.title});
++  const _HubHeader({required this.icon, required this.title, this.avatarUrl = ''});
+   final IconData icon;
+   final String title;
++  final String avatarUrl;
+ 
+   @override
+   Widget build(BuildContext context) => Container(
+@@ -134,7 +135,7 @@ class _HubHeader extends StatelessWidget {
+         decoration: BoxDecoration(color: const Color(0xFF111111), borderRadius: BorderRadius.circular(24)),
+         child: Row(
+           children: <Widget>[
+-            CircleAvatar(radius: 25, backgroundColor: Colors.white, foregroundColor: Colors.black, child: Icon(icon)),
++            CircleAvatar(radius: 25, backgroundColor: Colors.white, foregroundColor: Colors.black, backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null, child: avatarUrl.isEmpty ? Icon(icon) : null),
+             const SizedBox(width: 14),
+             Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900))),
+           ],
+diff --git a/lib/screens/driver_menu_screen.dart b/lib/screens/driver_menu_screen.dart
+index 7727b24..62ab7a3 100644
+--- a/lib/screens/driver_menu_screen.dart
++++ b/lib/screens/driver_menu_screen.dart
+@@ -24,14 +24,16 @@ class DriverMenuScreen extends StatelessWidget {
+           children: <Widget>[
+             Row(
+               children: <Widget>[
+-                CircleAvatar(
+-                  radius: 34,
+-                  backgroundColor: const Color(0xFFEFF3FA),
+-                  child: Text(
+-                    name.trim().isEmpty ? 'D' : name.trim().substring(0, 1).toUpperCase(),
+-                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF0A0A0A)),
+-                  ),
+-                ),
++                Builder(builder: (context) {
++                  final profile = session.driverHub['profile'] is Map ? Map<String,dynamic>.from(session.driverHub['profile'] as Map) : <String,dynamic>{};
++                  final avatar = (profile['avatar_url'] ?? '').toString();
++                  return CircleAvatar(
++                    radius: 34,
++                    backgroundColor: const Color(0xFFEFF3FA),
++                    backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
++                    child: avatar.isEmpty ? Text(name.trim().isEmpty ? 'D' : name.trim().substring(0, 1).toUpperCase(), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF0A0A0A))) : null,
++                  );
++                }),
+                 const SizedBox(width: 16),
+                 Expanded(
+                   child: Column(
+diff --git a/lib/screens/earnings_screen.dart b/lib/screens/earnings_screen.dart
+index b24371a..5356e5a 100644
+--- a/lib/screens/earnings_screen.dart
++++ b/lib/screens/earnings_screen.dart
+@@ -83,7 +83,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
+                 const SizedBox(height: 24),
+                 Row(
+                   children: <Widget>[
+-                    Expanded(child: Text('Completed trips'.tr, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900))),
++                    Expanded(child: Text('Completed jobs'.tr, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900))),
+                     Text('${data.jobs.length}', style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF666666))),
+                   ],
+                 ),
+@@ -164,7 +164,7 @@ class _SummaryCard extends StatelessWidget {
+           const SizedBox(height: 24),
+           Row(
+             children: <Widget>[
+-              Expanded(child: _Metric(icon: Icons.route_outlined, label: 'Trips', value: '${data.totalJobs}')),
++              Expanded(child: _Metric(icon: Icons.route_outlined, label: 'Jobs'.tr, value: '${data.totalJobs}')),
+               Expanded(child: _Metric(icon: Icons.payments_outlined, label: 'Gross', value: money(data.grossTotal, data.currency))),
+             ],
+           ),
+@@ -239,7 +239,7 @@ class _EarningJobCard extends StatelessWidget {
+                 width: 46,
+                 height: 46,
+                 decoration: const BoxDecoration(color: Color(0xFFF0F0F0), shape: BoxShape.circle),
+-                child: const Icon(Icons.person_outline_rounded),
++                child: Icon(job.jobType == 'ride' ? Icons.local_taxi_outlined : Icons.local_shipping_outlined),
+               ),
+               const SizedBox(width: 12),
+               Expanded(
+@@ -248,7 +248,7 @@ class _EarningJobCard extends StatelessWidget {
+                   children: <Widget>[
+                     Text(money(job.driverFare, currency), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                     const SizedBox(height: 2),
+-                    Text('Trip #${job.bookingId}', style: const TextStyle(color: Color(0xFF666666))),
++                    Text('${job.jobTypeLabel} #${job.bookingId}', style: const TextStyle(color: Color(0xFF666666))),
+                   ],
+                 ),
+               ),
+@@ -263,7 +263,7 @@ class _EarningJobCard extends StatelessWidget {
+           ),
+           _RouteLine(icon: Icons.circle_outlined, value: job.dropoff),
+           const SizedBox(height: 14),
+-          Text('Customer fare ${money(job.grossTotal, currency)}', style: const TextStyle(color: Color(0xFF666666))),
++          Text('${job.jobType == 'ride' ? 'Customer fare'.tr : 'Job value'.tr} ${money(job.grossTotal, currency)}', style: const TextStyle(color: Color(0xFF666666))),
+         ],
+       ),
+     );
+@@ -304,7 +304,7 @@ class _EmptyEarnings extends StatelessWidget {
+           children: <Widget>[
+             Icon(Icons.account_balance_wallet_outlined, size: 40),
+             SizedBox(height: 12),
+-            Text('No completed trips in this period.', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700)),
++            Text('No completed jobs in this period.'.tr, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700)),
+           ],
+         ),
+       );
+diff --git a/lib/services/offer_notification_service.dart b/lib/services/offer_notification_service.dart
+index 7900bad..2afd0c3 100644
+--- a/lib/services/offer_notification_service.dart
++++ b/lib/services/offer_notification_service.dart
+@@ -85,7 +85,7 @@ final class OfferNotificationService {
+     } catch (_) {}
+   }
+ 
+-  Future<void> showChatMessage({required int eventId, required int bookingId, required String preview, bool playForegroundSound = true}) async {
++  Future<void> showChatMessage({required int eventId, required int bookingId, required String preview, String title = 'New message', bool playForegroundSound = true}) async {
+     if (playForegroundSound) await _playForegroundSound();
+     if (!initialized) return;
+     const android = AndroidNotificationDetails(
+@@ -103,7 +103,7 @@ final class OfferNotificationService {
+     try {
+       await _plugin.show(
+         200000 + ((eventId > 0 ? eventId : bookingId) % 799999),
+-        'New job message',
++        title.trim().isEmpty ? 'New message' : title.trim(),
+         preview.trim().isEmpty ? 'Open the job chat to read the message.' : preview.trim(),
+         const NotificationDetails(android: android, iOS: ios),
+         payload: 'chat:$bookingId',
+diff --git a/lib/state/app_session.dart b/lib/state/app_session.dart
+index c03de4f..fbf2ebc 100644
+--- a/lib/state/app_session.dart
++++ b/lib/state/app_session.dart
+@@ -67,6 +67,7 @@ final class AppSession extends ChangeNotifier {
+   int chatAlertSequence = 0;
+   int chatAlertBookingId = 0;
+   String chatAlertPreview = '';
++  String chatAlertTitle = '';
+   int _lastChatAlertEventId = 0;
+   List<TripExtra> tripExtras = <TripExtra>[];
+   double tripExtrasTotal = 0;
+@@ -987,22 +988,33 @@ final class AppSession extends ChangeNotifier {
+     return ChatMessage.fromJson(Map<String,dynamic>.from(raw));
+   }
+ 
+-  void _announceChatAlert({required int eventId, required int bookingId, required String preview}) {
++  void _announceChatAlert({required int eventId, required int bookingId, required String preview, String title = ''}) {
+     if (eventId > 0 && eventId == _lastChatAlertEventId) return;
+     if (eventId > 0) _lastChatAlertEventId = eventId;
+     chatAlertBookingId = bookingId > 0 ? bookingId : (currentJob?.id ?? 0);
+-    chatAlertPreview = preview.trim().isEmpty ? 'You have a new job message.' : preview.trim();
++    chatAlertTitle = title.trim().isEmpty ? 'Message from passenger'.tr : title.trim();
++    chatAlertPreview = preview.trim().isEmpty ? 'You have a new job message.'.tr : preview.trim();
+     chatAlertSequence++;
+     if (hapticsEnabled) HapticFeedback.heavyImpact();
+     unawaited(_offerNotifications.showChatMessage(
+       eventId: eventId,
+       bookingId: chatAlertBookingId,
++      title: chatAlertTitle,
+       preview: chatAlertPreview,
+       playForegroundSound: chatSoundEnabled,
+     ));
+     notifyListeners();
+   }
+ 
++  void clearChatAlert(int bookingId) {
++    if (chatAlertBookingId == bookingId) {
++      chatAlertBookingId = 0;
++      chatAlertTitle = '';
++      chatAlertPreview = '';
++      notifyListeners();
++    }
++  }
++
+   void _onRealtimeEvent(Map<String, dynamic> event) {
+     final eventId = intValue(event['event_id']);
+     if (eventId > _lastRealtimeEventId) _lastRealtimeEventId = eventId;
+@@ -1010,11 +1022,16 @@ final class AppSession extends ChangeNotifier {
+     if (type == 'chat.message') {
+       final payload = mapValue(event['payload']);
+       final message = mapValue(payload['message']);
+-      _announceChatAlert(
+-        eventId: eventId,
+-        bookingId: intValue(event['booking_id'] ?? payload['booking_id']),
+-        preview: (message['message'] ?? payload['message_text'] ?? '').toString(),
+-      );
++      final senderRole=(payload['sender_role'] ?? message['sender_role'] ?? '').toString();
++      if(senderRole != 'driver'){
++        final senderName=(message['sender_name'] ?? payload['sender_name'] ?? '').toString();
++        _announceChatAlert(
++          eventId: eventId,
++          bookingId: intValue(event['booking_id'] ?? payload['booking_id']),
++          title: senderName.isNotEmpty ? '${'Message from passenger'.tr} · $senderName' : 'Message from passenger'.tr,
++          preview: (message['message'] ?? payload['message_text'] ?? '').toString(),
++        );
++      }
+       return;
+     }
+     if (type == 'job.offer') {
+@@ -1052,6 +1069,7 @@ final class AppSession extends ChangeNotifier {
+       _announceChatAlert(
+         eventId: intValue(data['event_id']),
+         bookingId: intValue(data['booking_id']),
++        title: (data['notification_title'] ?? 'Message from passenger'.tr).toString(),
+         preview: (data['notification_body'] ?? '').toString(),
+       );
+       return;
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 490a84b..1033fbb 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -1,7 +1,7 @@
+ name: gaotus_mobility_driver
+ description: Driver application for Gaotus Mobility Platform.
+ publish_to: "none"
+-version: 0.6.2+17
++version: 0.6.3+18
+ 
+ environment:
+   sdk: ">=3.8.0 <4.0.0"
