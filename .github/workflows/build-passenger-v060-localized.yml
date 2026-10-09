@@ -49,6 +49,7 @@ jobs:
 
       - name: Apply Passenger v0.6.0 Localization Pack
         run: |
+          # Runtime localization must preserve Dart const defaults/declarations.
           python3 .localization-pack/patch_localization.py passenger
           python3 .localization-pack/fix_runtime_const.py passenger
           grep -q 'version: 0.6.0+21' passenger/pubspec.yaml
