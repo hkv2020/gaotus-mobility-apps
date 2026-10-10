@@ -11,8 +11,9 @@ sha256sum \
   passenger/android/app/google-services.json \
   > /tmp/passenger067-critical.before
 
-# Apply only GPS-first map startup delta.
+# Apply GPS-first startup delta, then remove every remaining active London map fallback.
 patch -p1 -d passenger < .passenger067/gps-first-map.patch
+python3 .map-cleanup/passenger_global_map_cleanup.py
 
 # v0.6.6 already contains this translation from the Romanian sweep. Keep the
 # baseline translation and remove only the duplicate line introduced by the
@@ -37,7 +38,10 @@ grep -q 'version: 0.6.7+28' passenger/pubspec.yaml
 grep -q "static const version = '0.6.7'" passenger/lib/config/app_config.dart
 grep -q 'Future<Position?> lastKnown()' passenger/lib/services/location_service.dart
 grep -q "Finding your location…" passenger/lib/core/localization.dart
-! grep -q 'LatLng(51.5074, -0.1278)' passenger/lib/screens/home_screen.dart
+! grep -R -q --include='*.dart' -E '51\.5074|-0\.1278' passenger/lib
+grep -q 'initial==null ? const Center' passenger/lib/screens/quote_screen.dart
+grep -q 'center == null ? const Center' passenger/lib/screens/trip_screen.dart
+grep -q 'center == null ? const Center' passenger/lib/screens/delivery_screen.dart
 grep -q 'com.gaotus.gaotus_mobility_passenger' passenger/android/app/google-services.json
 
 cd passenger
