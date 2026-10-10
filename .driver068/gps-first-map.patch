@@ -1,0 +1,154 @@
+diff -ruN base_driver/GAOTUS-MOBILITY-DRIVER-v0.6.8-GPS-FIRST-MAP-QA.md work_driver/GAOTUS-MOBILITY-DRIVER-v0.6.8-GPS-FIRST-MAP-QA.md
+--- base_driver/GAOTUS-MOBILITY-DRIVER-v0.6.8-GPS-FIRST-MAP-QA.md	1970-01-01 00:00:00.000000000 +0000
++++ work_driver/GAOTUS-MOBILITY-DRIVER-v0.6.8-GPS-FIRST-MAP-QA.md	2026-10-10 12:55:16.816712885 +0000
+@@ -0,0 +1,8 @@
++# Gaotus Mobility Driver v0.6.8+23 — GPS-First Map Startup
++
++- Removes London / server-state / job-pickup fallback from the Driver home map camera.
++- Primes OS last-known GPS as soon as the Driver home map is created, even while availability is offline.
++- Requests a fresh navigation-grade GPS fix immediately after cached GPS.
++- Does not construct the tile map until a real GPS position exists; first install shows a neutral locating state.
++- My Location now primes current GPS directly; existing online continuous GPS/realtime transport remains unchanged.
++- Notification, Firebase, push, realtime, dispatch and chat services are unchanged by this delta.
+diff -ruN base_driver/lib/config/app_config.dart work_driver/lib/config/app_config.dart
+--- base_driver/lib/config/app_config.dart	2026-10-10 12:26:21.000000000 +0000
++++ work_driver/lib/config/app_config.dart	2026-10-10 12:55:16.816364731 +0000
+@@ -1,6 +1,6 @@
+ final class AppConfig {
+   static const String appName = 'Gaotus Mobility Driver';
+-  static const String version = '0.6.7';
++  static const String version = '0.6.8';
+   static const String namespace = '/wp-json/gaotus-mobility/v1';
+   static const String defaultServer = String.fromEnvironment(
+     'GMP_API_BASE',
+diff -ruN base_driver/lib/screens/driver_home_screen.dart work_driver/lib/screens/driver_home_screen.dart
+--- base_driver/lib/screens/driver_home_screen.dart	2026-10-10 12:20:47.000000000 +0000
++++ work_driver/lib/screens/driver_home_screen.dart	2026-10-10 12:55:38.831551799 +0000
+@@ -204,6 +204,7 @@
+   @override
+   void initState() {
+     super.initState();
++    unawaited(widget.session.primeLocation());
+     WidgetsBinding.instance.addPostFrameCallback((_) => _followDriver(force: true));
+   }
+ 
+@@ -216,10 +217,8 @@
+   void _followDriver({bool force = false}) {
+     if (!mounted) return;
+     final position = _currentCenter(widget.session);
++    if (position == null) return;
+     final previous = _lastCameraPosition;
+-    final hasRealGps = widget.session.lastPosition != null ||
+-        (widget.session.driverState?.latitude != null && widget.session.driverState?.longitude != null);
+-    if (!hasRealGps && !force) return;
+     if (!force && previous != null) {
+       final delta = (previous.latitude - position.latitude).abs() + (previous.longitude - position.longitude).abs();
+       if (delta < 0.00015) return;
+@@ -240,18 +239,19 @@
+     final hasGps = session.lastPosition != null;
+     final heading = session.lastPosition?.heading ?? 0;
+     final markers = <Marker>[
+-      Marker(
+-        point: center,
+-        width: 56,
+-        height: 60,
+-        child: PremiumCarMarker(
+-          headingDegrees: heading,
+-          size: 44,
+-          accent: online ? const Color(0xFF276EF1) : const Color(0xFF17191C),
+-          selected: currentJob != null,
+-          dimmed: !online,
++      if (center != null)
++        Marker(
++          point: center,
++          width: 56,
++          height: 60,
++          child: PremiumCarMarker(
++            headingDegrees: heading,
++            size: 44,
++            accent: online ? const Color(0xFF276EF1) : const Color(0xFF17191C),
++            selected: currentJob != null,
++            dimmed: !online,
++          ),
+         ),
+-      ),
+       if (currentJob?.pickupLat != null && currentJob?.pickupLng != null)
+         Marker(point: LatLng(currentJob!.pickupLat!, currentJob.pickupLng!), width: 46, height: 46, child: const _JobMapPin(icon: Icons.person_pin_circle_rounded)),
+       if (currentJob?.dropoffLat != null && currentJob?.dropoffLng != null)
+@@ -262,20 +262,38 @@
+       body: Stack(
+         children: <Widget>[
+           Positioned.fill(
+-            child: FlutterMap(
+-              mapController: _map,
+-              options: MapOptions(initialCenter: center, initialZoom: online ? 13.5 : 12.5),
+-              children: <Widget>[
+-                TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'ai.gaotus.gaotus_mobility_driver'),
+-                MarkerLayer(markers: markers),
+-              ],
+-            ),
++            child: center == null
++                ? Container(
++                    color: const Color(0xFFF3F5F7),
++                    alignment: Alignment.center,
++                    child: Column(
++                      mainAxisSize: MainAxisSize.min,
++                      children: <Widget>[
++                        const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3)),
++                        const SizedBox(height: 14),
++                        Text('Finding GPS…'.tr, style: const TextStyle(fontWeight: FontWeight.w800)),
++                        const SizedBox(height: 12),
++                        OutlinedButton(
++                          onPressed: () async { await widget.session.primeLocation(); _followDriver(force: true); },
++                          child: Text('Retry'.tr),
++                        ),
++                      ],
++                    ),
++                  )
++                : FlutterMap(
++                    mapController: _map,
++                    options: MapOptions(initialCenter: center!, initialZoom: 15.2),
++                    children: <Widget>[
++                      TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'ai.gaotus.gaotus_mobility_driver'),
++                      MarkerLayer(markers: markers),
++                    ],
++                  ),
+           ),
+           Positioned(top: MediaQuery.paddingOf(context).top + 14, left: 20, child: _CircleButton(icon: Icons.home_rounded, onTap: () {})),
+           Positioned(
+             top: MediaQuery.paddingOf(context).top + 14,
+             right: 20,
+-            child: _CircleButton(icon: Icons.my_location_rounded, onTap: () async { await widget.session.recoverLocation(forceRestart: true); _followDriver(force: true); }),
++            child: _CircleButton(icon: Icons.my_location_rounded, onTap: () async { await widget.session.primeLocation(); _followDriver(force: true); }),
+           ),
+           Positioned(
+             top: MediaQuery.paddingOf(context).top + 82,
+@@ -309,14 +327,10 @@
+     );
+   }
+ 
+-  static LatLng _currentCenter(AppSession session) {
++  static LatLng? _currentCenter(AppSession session) {
+     final p = session.lastPosition;
+     if (p != null) return LatLng(p.latitude, p.longitude);
+-    final state = session.driverState;
+-    if (state?.latitude != null && state?.longitude != null) return LatLng(state!.latitude!, state.longitude!);
+-    final job = session.currentJob;
+-    if (job?.pickupLat != null && job?.pickupLng != null) return LatLng(job!.pickupLat!, job.pickupLng!);
+-    return const LatLng(51.5074, -0.1278);
++    return null;
+   }
+ 
+   static String _money(double value, String currency) {
+diff -ruN base_driver/pubspec.yaml work_driver/pubspec.yaml
+--- base_driver/pubspec.yaml	2026-10-10 12:26:21.000000000 +0000
++++ work_driver/pubspec.yaml	2026-10-10 12:55:16.816278163 +0000
+@@ -1,7 +1,7 @@
+ name: gaotus_mobility_driver
+ description: Driver application for Gaotus Mobility Platform.
+ publish_to: "none"
+-version: 0.6.7+22
++version: 0.6.8+23
+ 
+ environment:
+   sdk: ">=3.8.0 <4.0.0"
