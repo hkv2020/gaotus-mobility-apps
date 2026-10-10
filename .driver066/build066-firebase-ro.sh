@@ -40,6 +40,17 @@ Path('/tmp/driver066-ro.patch').write_bytes(zlib.decompress(base64.b64decode(p.r
 PY
 patch -p5 -d driver < /tmp/driver066-ro.patch
 
+# Runtime localization (.tr) cannot live inside a const widget tree.
+python3 - <<'PY'
+from pathlib import Path
+p=Path('driver/lib/screens/operations_job_screen.dart')
+s=p.read_text()
+s=s.replace("child: const Column(children: <Widget>[\n          Icon(Icons.task_alt_rounded", "child: Column(children: <Widget>[\n          const Icon(Icons.task_alt_rounded")
+s=s.replace("          SizedBox(height: 10),\n          Text('All route stops are closed'.tr", "          const SizedBox(height: 10),\n          Text('All route stops are closed'.tr")
+s=s.replace("          SizedBox(height: 4),\n          Text('The platform is finalising this operations job.'.tr", "          const SizedBox(height: 4),\n          Text('The platform is finalising this operations job.'.tr")
+p.write_text(s)
+PY
+
 grep -q 'version: 0.6.6+21' driver/pubspec.yaml
 
 cd driver
