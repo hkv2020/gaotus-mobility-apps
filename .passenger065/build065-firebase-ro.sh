@@ -43,8 +43,7 @@ Path('/tmp/passenger065-ro.patch').write_bytes(zlib.decompress(base64.b64decode(
 PY
 patch -p1 -d passenger < /tmp/passenger065-ro.patch
 
-# The original sweep intentionally reused a few existing dictionary keys. Keep the
-# canonical earlier entries so Dart's const map has no duplicate keys.
+# Clean duplicate dictionary keys and catch visible strings missed by the first sweep.
 python3 - <<'PY'
 from pathlib import Path
 p=Path('passenger/lib/core/localization.dart')
@@ -58,6 +57,16 @@ for line in lines:
         if seen_req > 1: continue
     out.append(line)
 p.write_text('\n'.join(out)+'\n')
+
+q=Path('passenger/lib/screens/quote_screen.dart')
+s=q.read_text()
+s=s.replace("const SnackBar(content:Text('Connection interrupted. Retrying automatically…'))", "SnackBar(content:Text('Connection interrupted. Retrying automatically…'.tr))")
+q.write_text(s)
+
+h=Path('passenger/lib/screens/home_screen.dart')
+s=h.read_text()
+s=s.replace("Text('${i + 1} passenger${i == 0 ? '' : 's'}')", "Text(CountryConfig.isRomanian ? '${i + 1} ${i == 0 ? 'pasager' : 'pasageri'}' : '${i + 1} passenger${i == 0 ? '' : 's'}')")
+h.write_text(s)
 PY
 
 grep -q 'version: 0.6.5+26' passenger/pubspec.yaml
@@ -65,6 +74,8 @@ grep -q "Confirm pick-up spot'.tr" passenger/lib/screens/pickup_confirm_screen.d
 grep -q "Payment method'.tr" passenger/lib/screens/quote_screen.dart
 grep -q "Door-to-door delivery'.tr" passenger/lib/screens/send_parcel_screen.dart
 grep -q "Messages update automatically'.tr" passenger/lib/screens/chat_screen.dart
+grep -q "Connection interrupted. Retrying automatically…'.tr" passenger/lib/screens/quote_screen.dart
+grep -q "pasageri" passenger/lib/screens/home_screen.dart
 
 cd passenger
 python3 - <<'PY'
