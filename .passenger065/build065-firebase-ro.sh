@@ -34,13 +34,31 @@ python3 .passenger063/fix063.py
 python3 .passenger064/fix064.py
 python3 .passenger065/fix065.py
 
+# Use the known-good localization patch blob from the first RO sweep commit.
+curl -fsSL 'https://raw.githubusercontent.com/hkv2020/gaotus-mobility-apps/e9b3566343aead0b3c1101284aefc74d6c439f6e/.passenger065/ro-sweep.patch.zlib.b64' -o /tmp/passenger065-ro.b64
 python3 - <<'PY'
 from pathlib import Path
 import base64,zlib
-p=Path('.passenger065/ro-sweep.patch.zlib.b64')
-Path('/tmp/passenger065-ro.patch').write_bytes(zlib.decompress(base64.b64decode(p.read_text().strip())))
+Path('/tmp/passenger065-ro.patch').write_bytes(zlib.decompress(base64.b64decode(Path('/tmp/passenger065-ro.b64').read_text().strip())))
 PY
 patch -p1 -d passenger < /tmp/passenger065-ro.patch
+
+# The original sweep intentionally reused a few existing dictionary keys. Keep the
+# canonical earlier entries so Dart's const map has no duplicate keys.
+python3 - <<'PY'
+from pathlib import Path
+p=Path('passenger/lib/core/localization.dart')
+lines=p.read_text().splitlines()
+remove={"    'Today': 'Astăzi',","    'Next': 'Următoarea',","    'Delivery': 'Livrare',"}
+out=[]; seen_req=0
+for line in lines:
+    if line in remove: continue
+    if line.strip()=="'Delivery requested': 'Livrare solicitată',":
+        seen_req += 1
+        if seen_req > 1: continue
+    out.append(line)
+p.write_text('\n'.join(out)+'\n')
+PY
 
 grep -q 'version: 0.6.5+26' passenger/pubspec.yaml
 grep -q "Confirm pick-up spot'.tr" passenger/lib/screens/pickup_confirm_screen.dart
