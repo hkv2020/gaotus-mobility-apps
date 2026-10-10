@@ -14,6 +14,17 @@ sha256sum \
 # Apply only GPS-first map startup delta.
 patch -p1 -d passenger < .passenger067/gps-first-map.patch
 
+# v0.6.6 already contains this translation from the Romanian sweep. Keep the
+# baseline translation and remove only the duplicate line introduced by the
+# GPS-first patch so the const localization map stays valid.
+python3 - <<'PY'
+from pathlib import Path
+p=Path('passenger/lib/core/localization.dart')
+s=p.read_text()
+s=s.replace('    "Finding your location…": "Îți găsim locația…",\n', '', 1)
+p.write_text(s)
+PY
+
 sha256sum \
   passenger/lib/services/push_service.dart \
   passenger/lib/services/passenger_notification_service.dart \
