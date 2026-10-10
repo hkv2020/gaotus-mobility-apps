@@ -77,13 +77,14 @@ p = root / 'lib/screens/home_screen.dart'
 s = p.read_text().replace("'${ride.jobTypeLabel} #${ride.id}'", "'${ride.jobTypeLabel.tr} #${ride.id}'")
 p.write_text(s)
 
-# Schedule strings were still hardcoded in English in the ride quote screen.
+# Schedule and quote strings that were still hardcoded in English.
 p = root / 'lib/screens/quote_screen.dart'
 s = p.read_text()
 s = s.replace("if(delta<=20)return 'Now';", "if(delta<=20)return AppLocalization.isRomanian ? 'Acum' : 'Now';")
 s = s.replace("if(sameDay)return 'Today '+time;", "if(sameDay)return (AppLocalization.isRomanian ? 'Astăzi ' : 'Today ')+time;")
 s = s.replace("const months=<String>['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];\n      return dt.day.toString()+' '+months[dt.month-1]+' · '+time;", "final months=AppLocalization.isRomanian ? const <String>['ian','feb','mar','apr','mai','iun','iul','aug','sept','oct','nov','dec'] : const <String>['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];\n      return dt.day.toString()+' '+months[dt.month-1]+' · '+time;")
 s = s.replace("title:(journey['pickup']??'Pick-up').toString(),subtitle:'Pick-up'.tr", "title:(journey['pickup']??'Pick-up'.tr).toString(),subtitle:'Pick-up'.tr")
+s = s.replace("StatusPill(label:'Trip '+(j['duration_text']??'').toString())", "StatusPill(label:(AppLocalization.isRomanian ? 'Cursă ' : 'Trip ')+(j['duration_text']??'').toString())")
 p.write_text(s)
 
-print('Passenger final Romanian dynamic-label and schedule touch applied')
+print('Passenger final Romanian dynamic-label, schedule and quote touch applied')
