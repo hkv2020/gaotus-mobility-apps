@@ -1,0 +1,37 @@
+name: Build Passenger v0.6.6 Prelogin RO
+
+on:
+  push:
+    branches: [ chat-notifications-hotfix ]
+    paths:
+      - '.passenger066/**'
+      - '.github/workflows/build-passenger-v066-prelogin-ro.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build Passenger v0.6.6 Prelogin RO
+        run: bash .passenger066/build066-prelogin-ro.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaotus-Mobility-Passenger-v0.6.6-PRELOGIN-RO
+          path: |
+            Gaotus-Mobility-Passenger-v0.6.6-PRELOGIN-RO.apk
+            Gaotus-Mobility-Passenger-v0.6.6-PRELOGIN-RO-SOURCE.zip
+            SHA256SUMS-PASSENGER-V066.txt
+          if-no-files-found: error
