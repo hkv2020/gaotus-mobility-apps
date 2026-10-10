@@ -62,6 +62,7 @@ s=s.replace("root=Path('/mnt/data/driver066_work')", "root=Path('driver')")
 Path('/tmp/complete_driver_ro_sweep.py').write_text(s)
 PY
 python3 /tmp/complete_driver_ro_sweep.py
+python3 .driver066/final_ro_touch.py
 
 grep -q 'version: 0.6.6+21' driver/pubspec.yaml
 grep -q "'Call support'.tr" driver/lib/screens/driver_hub_screens.dart
