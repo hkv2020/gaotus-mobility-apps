@@ -69,6 +69,8 @@ s=s.replace("Text('${i + 1} passenger${i == 0 ? '' : 's'}')", "Text(CountryConfi
 h.write_text(s)
 PY
 
+python3 .passenger065/final_ro_touch.py
+
 grep -q 'version: 0.6.5+26' passenger/pubspec.yaml
 grep -q "Confirm pick-up spot'.tr" passenger/lib/screens/pickup_confirm_screen.dart
 grep -q "Payment method'.tr" passenger/lib/screens/quote_screen.dart
@@ -76,6 +78,8 @@ grep -q "Door-to-door delivery'.tr" passenger/lib/screens/send_parcel_screen.dar
 grep -q "Messages update automatically'.tr" passenger/lib/screens/chat_screen.dart
 grep -q "Connection interrupted. Retrying automatically…'.tr" passenger/lib/screens/quote_screen.dart
 grep -q "pasageri" passenger/lib/screens/home_screen.dart
+grep -q "serviceLevelLabel.tr" passenger/lib/screens/send_parcel_screen.dart
+grep -q "status.tr.toUpperCase" passenger/lib/screens/delivery_screen.dart
 
 cd passenger
 python3 - <<'PY'
