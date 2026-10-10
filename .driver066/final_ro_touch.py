@@ -22,6 +22,7 @@ entries = {
     'Push registered': 'Push înregistrat',
     'Server configured': 'Server configurat',
     'Address unavailable': 'Adresă indisponibilă',
+    'Customer fare': 'Tarif client',
 }
 needle = '\n  };\n  static String t('
 missing=[]
@@ -63,11 +64,23 @@ s=s.replace("_ConnectionLine(label: 'Server configured',", "_ConnectionLine(labe
 s=s.replace("session.gpsRunning ? 'Active' : 'Stopped'", "session.gpsRunning ? 'Active'.tr : 'Stopped'.tr")
 p.write_text(s)
 
-# Offer card route labels / distance text.
+# Offer card: translate type badge and all dynamic counters.
 p=root/'lib/widgets/offer_card.dart'
 s=p.read_text()
+s=s.replace("Text(job.jobTypeLabel.toUpperCase(),", "Text(job.jobTypeLabel.tr.toUpperCase(),")
+s=s.replace("Text('$seconds sec',", "Text(AppLocalization.isRomanian ? '$seconds sec' : '$seconds sec',")
+s=s.replace("label: '${job.passengers} passenger${job.passengers == 1 ? '' : 's'}'", "label: AppLocalization.isRomanian ? '${job.passengers} ${job.passengers == 1 ? 'pasager' : 'pasageri'}' : '${job.passengers} passenger${job.passengers == 1 ? '' : 's'}'")
+s=s.replace("label: '${job.operationsSummary.total} stop${job.operationsSummary.total == 1 ? '' : 's'}'", "label: AppLocalization.isRomanian ? '${job.operationsSummary.total} ${job.operationsSummary.total == 1 ? 'oprire' : 'opriri'}' : '${job.operationsSummary.total} stop${job.operationsSummary.total == 1 ? '' : 's'}'")
 s=s.replace("title: job.isRide ? 'Pick-up' : 'Start'.tr", "title: job.isRide ? 'Pick-up'.tr : 'Start'.tr")
 s=s.replace("label: '${offer.distanceKm!.toStringAsFixed(1)} km to pick-up'", "label: AppLocalization.isRomanian ? '${offer.distanceKm!.toStringAsFixed(1)} km până la preluare' : '${offer.distanceKm!.toStringAsFixed(1)} km to pick-up'")
 p.write_text(s)
 
-print('Driver final Romanian visible-label touch applied')
+# Operations: translate type badges, route summary and parcel counters.
+p=root/'lib/screens/operations_job_screen.dart'
+s=p.read_text()
+s=s.replace("Text(job.jobTypeLabel.toUpperCase(),", "Text(job.jobTypeLabel.tr.toUpperCase(),")
+s=s.replace("'${summary.pending + summary.active} remaining · ${summary.failed} failed · ${summary.postponed} postponed'", "AppLocalization.isRomanian ? '${summary.pending + summary.active} rămase · ${summary.failed} eșuate · ${summary.postponed} amânate' : '${summary.pending + summary.active} remaining · ${summary.failed} failed · ${summary.postponed} postponed'")
+s=s.replace("_Chip(text: '${stop.packageCount} package${stop.packageCount == 1 ? '' : 's'}')", "_Chip(text: AppLocalization.isRomanian ? '${stop.packageCount} ${stop.packageCount == 1 ? 'colet' : 'colete'}' : '${stop.packageCount} package${stop.packageCount == 1 ? '' : 's'}')")
+p.write_text(s)
+
+print('Driver final Romanian dynamic-label touch applied')
