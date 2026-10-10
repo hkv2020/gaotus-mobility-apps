@@ -14,6 +14,19 @@ sha256sum \
 # Apply only GPS-first map startup delta.
 patch -p1 -d driver < .driver068/gps-first-map.patch
 
+# The nullable branch has already narrowed center to LatLng in the map branch.
+# Remove the redundant non-null assertion so flutter analyze stays warning-clean
+# for this delta without changing runtime behavior.
+python3 - <<'PY'
+from pathlib import Path
+p=Path('driver/lib/screens/driver_home_screen.dart')
+s=p.read_text().replace(
+    'options: MapOptions(initialCenter: center!, initialZoom: 15.2),',
+    'options: MapOptions(initialCenter: center, initialZoom: 15.2),',
+)
+p.write_text(s)
+PY
+
 sha256sum \
   driver/lib/services/offer_notification_service.dart \
   driver/lib/services/push_service.dart \
@@ -26,6 +39,7 @@ grep -q 'version: 0.6.8+23' driver/pubspec.yaml
 grep -q "static const String version = '0.6.8'" driver/lib/config/app_config.dart
 grep -q 'unawaited(widget.session.primeLocation())' driver/lib/screens/driver_home_screen.dart
 ! grep -q 'LatLng(51.5074, -0.1278)' driver/lib/screens/driver_home_screen.dart
+! grep -q 'initialCenter: center!' driver/lib/screens/driver_home_screen.dart
 grep -q 'ai.gaotus.gaotus_mobility_driver' driver/android/app/google-services.json
 
 cd driver
