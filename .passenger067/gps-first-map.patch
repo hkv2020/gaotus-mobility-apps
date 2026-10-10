@@ -1,0 +1,228 @@
+diff -ruN base_pass/GAOTUS-MOBILITY-PASSENGER-v0.6.7-GPS-FIRST-MAP-QA.md work_pass/GAOTUS-MOBILITY-PASSENGER-v0.6.7-GPS-FIRST-MAP-QA.md
+--- base_pass/GAOTUS-MOBILITY-PASSENGER-v0.6.7-GPS-FIRST-MAP-QA.md	1970-01-01 00:00:00.000000000 +0000
++++ work_pass/GAOTUS-MOBILITY-PASSENGER-v0.6.7-GPS-FIRST-MAP-QA.md	2026-10-10 12:55:16.816223533 +0000
+@@ -0,0 +1,9 @@
++# Gaotus Mobility Passenger v0.6.7+28 — GPS-First Map Startup
++
++- Removes the visible London fallback from the Passenger home map.
++- Reads OS last-known GPS first for instant startup when available.
++- Requests a fresh high-accuracy GPS fix immediately after and recenters only when needed.
++- Does not create the tile map until a real cached/current GPS position exists, so no irrelevant London tiles are downloaded.
++- First install / no cached GPS shows a neutral locating state with Retry instead of a false map location.
++- Nearby-car lookup waits until a real location exists.
++- Notification, Firebase, realtime, booking and chat code are unchanged by this delta.
+diff -ruN base_pass/lib/config/app_config.dart work_pass/lib/config/app_config.dart
+--- base_pass/lib/config/app_config.dart	2026-10-10 12:26:48.000000000 +0000
++++ work_pass/lib/config/app_config.dart	2026-10-10 12:55:16.815647222 +0000
+@@ -1,6 +1,6 @@
+ final class AppConfig {
+   static const appName = 'Gaotus Mobility';
+-  static const version = '0.6.6';
++  static const version = '0.6.7';
+   static const defaultServer = 'https://beaphoenix.eu';
+   static const namespace = '/wp-json/gaotus-mobility/v1';
+ 
+diff -ruN base_pass/lib/core/localization.dart work_pass/lib/core/localization.dart
+--- base_pass/lib/core/localization.dart	2026-10-10 12:26:48.000000000 +0000
++++ work_pass/lib/core/localization.dart	2026-10-10 12:55:16.815924051 +0000
+@@ -18,6 +18,8 @@
+     "Close": "Închide",
+     "Refresh": "Actualizează",
+     "Retry": "Reîncearcă",
++    "Finding your location…": "Îți găsim locația…",
++    "Location unavailable": "Locația nu este disponibilă",
+     "Back": "Înapoi",
+     "Done": "Gata",
+     "Next": "Următorul",
+diff -ruN base_pass/lib/screens/home_screen.dart work_pass/lib/screens/home_screen.dart
+--- base_pass/lib/screens/home_screen.dart	2026-10-10 12:20:36.000000000 +0000
++++ work_pass/lib/screens/home_screen.dart	2026-10-10 12:55:38.831305706 +0000
+@@ -37,7 +37,8 @@
+   String? destinationSearchError;
+   int destinationSearchSerial = 0;
+   final String destinationSessionToken = 'gmp_inline_${DateTime.now().microsecondsSinceEpoch}';
+-  LatLng center = const LatLng(51.5074, -0.1278);
++  LatLng? center;
++  String? locationError;
+   DateTime pickupAt = DateTime.now().add(const Duration(minutes: 10));
+   int _lastChatAlertSequence=0;
+   Timer? _chatAlertPollTimer;
+@@ -81,38 +82,63 @@
+ 
+   Future<void> _refreshNearby() async {
+     if(!mounted||widget.session.activeBooking!=null)return;
+-    final lat=pickupLat??center.latitude;
+-    final lng=pickupLng??center.longitude;
++    final current=center;
++    if((pickupLat==null||pickupLng==null)&&current==null)return;
++    final lat=pickupLat??current!.latitude;
++    final lng=pickupLng??current!.longitude;
+     await widget.session.refreshNearby(lat,lng,radiusKm:12,limit:20);
+   }
+ 
+   Future<void> _primeLocation() async {
++    final hadCenter = center != null;
+     try {
++      final cached = await widget.session.location.lastKnown();
++      if (cached != null && mounted && center == null) {
++        final cachedPoint = LatLng(cached.latitude, cached.longitude);
++        setState(() {
++          center = cachedPoint;
++          pickupLat = cached.latitude;
++          pickupLng = cached.longitude;
++          locationError = null;
++        });
++        unawaited(widget.session.refreshNearby(cached.latitude,cached.longitude,radiusKm:12,limit:20));
++      }
+       final p = await widget.session.location.current();
+       if (!mounted) return;
+       final here = LatLng(p.latitude, p.longitude);
++      final shouldMove = hadCenter || center != null;
+       setState(() {
+         center = here;
+         pickupLat = p.latitude;
+         pickupLng = p.longitude;
++        locationError = null;
+       });
+-      map.move(here, 15.5);
++      if (shouldMove) {
++        WidgetsBinding.instance.addPostFrameCallback((_) {
++          if (!mounted) return;
++          try { map.move(here, 15.5); } catch (_) {}
++        });
++      }
+       unawaited(widget.session.refreshNearby(p.latitude,p.longitude,radiusKm:12,limit:20));
+       try {
+         final resolved = await widget.session.reverseGeocode(p.latitude, p.longitude);
+         if (mounted && resolved.address.isNotEmpty) setState(() => pickup.text = resolved.address);
+       } catch (_) {}
+-    } catch (_) {}
++    } catch (_) {
++      if (mounted && center == null) setState(() => locationError = 'Location unavailable'.tr);
++    }
+   }
+ 
+   Future<void> choosePickup() async {
+     try {
+-      var initial = center;
+-      if (pickupLat == null || pickupLng == null) {
++      LatLng initial;
++      if (pickupLat != null && pickupLng != null) {
++        initial = LatLng(pickupLat!, pickupLng!);
++      } else if (center != null) {
++        initial = center!;
++      } else {
+         final p = await widget.session.location.current();
+         initial = LatLng(p.latitude, p.longitude);
+-      } else {
+-        initial = LatLng(pickupLat!, pickupLng!);
+       }
+       if (!mounted) return;
+       final selected = await Navigator.of(context).push<PlaceSelection>(MaterialPageRoute(builder: (_) => PickupConfirmScreen(session: widget.session, initial: initial, initialAddress: pickup.text)));
+@@ -154,8 +180,8 @@
+         final rows = await widget.session.placeAutocomplete(
+           query,
+           sessionToken: destinationSessionToken,
+-          lat: pickupLat ?? center.latitude,
+-          lng: pickupLng ?? center.longitude,
++          lat: pickupLat ?? center?.latitude,
++          lng: pickupLng ?? center?.longitude,
+         );
+         if (!mounted || serial != destinationSearchSerial) return;
+         setState(() {
+@@ -267,7 +293,7 @@
+             ListTile(leading: const Icon(Icons.refresh_rounded), title: Text('Refresh rides'.tr), onTap: () { Navigator.pop(sheetContext); s.refreshBookings(); }),
+             ListTile(leading: const Icon(Icons.help_outline_rounded), title: Text('Help & safety'.tr), subtitle: Text('Coming in the next UI sprint'.tr), onTap: () {}),
+             const Divider(),
+-            ListTile(leading: const Icon(Icons.info_outline_rounded), title: const Text('Passenger v0.6.5'), subtitle: Text('Curse, colete, tracking live și mesaje'.tr)),
++            ListTile(leading: const Icon(Icons.info_outline_rounded), title: const Text('Passenger v0.6.7'), subtitle: Text('Curse, colete, tracking live și mesaje'.tr)),
+             ListTile(leading: const Icon(Icons.logout_rounded), title: Text('Sign out'.tr), onTap: () { Navigator.pop(sheetContext); s.logout(); }),
+           ]),
+         ),
+@@ -290,14 +316,31 @@
+       body: Stack(
+         children: <Widget>[
+           Positioned.fill(
+-            child: FlutterMap(
+-              mapController: map,
+-              options: MapOptions(initialCenter: center, initialZoom: 13.5),
+-              children: <Widget>[
+-                TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.gaotus.mobility.passenger'),
+-                MarkerLayer(markers: <Marker>[...nearbyMarkers,...pickupMarker]),
+-              ],
+-            ),
++            child: center == null
++                ? Container(
++                    color: const Color(0xFFF3F5F7),
++                    alignment: Alignment.center,
++                    child: Column(
++                      mainAxisSize: MainAxisSize.min,
++                      children: <Widget>[
++                        const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3)),
++                        const SizedBox(height: 14),
++                        Text(locationError ?? 'Finding your location…'.tr, style: const TextStyle(fontWeight: FontWeight.w800)),
++                        if (locationError != null) ...<Widget>[
++                          const SizedBox(height: 12),
++                          OutlinedButton(onPressed: _primeLocation, child: Text('Retry'.tr)),
++                        ],
++                      ],
++                    ),
++                  )
++                : FlutterMap(
++                    mapController: map,
++                    options: MapOptions(initialCenter: center!, initialZoom: 15.2),
++                    children: <Widget>[
++                      TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.gaotus.mobility.passenger'),
++                      MarkerLayer(markers: <Marker>[...nearbyMarkers,...pickupMarker]),
++                    ],
++                  ),
+           ),
+           Positioned(
+             top: MediaQuery.paddingOf(context).top + 12,
+diff -ruN base_pass/lib/services/location_service.dart work_pass/lib/services/location_service.dart
+--- base_pass/lib/services/location_service.dart	2026-09-22 16:34:30.000000000 +0000
++++ work_pass/lib/services/location_service.dart	2026-10-10 12:55:16.815693951 +0000
+@@ -1,13 +1,29 @@
+ import 'package:geolocator/geolocator.dart';
+ 
+ final class LocationService {
+-  Future<Position> current() async {
++  Future<LocationPermission> _ensurePermission() async {
+     var permission = await Geolocator.checkPermission();
+     if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
+     if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+       throw Exception('Location permission is required to use current pickup.');
+     }
+     if (!await Geolocator.isLocationServiceEnabled()) throw Exception('Location services are disabled.');
+-    return Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high));
++    return permission;
++  }
++
++  Future<Position?> lastKnown() async {
++    try {
++      await _ensurePermission();
++      return await Geolocator.getLastKnownPosition();
++    } catch (_) {
++      return null;
++    }
++  }
++
++  Future<Position> current() async {
++    await _ensurePermission();
++    return Geolocator.getCurrentPosition(
++      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
++    );
+   }
+ }
+diff -ruN base_pass/pubspec.yaml work_pass/pubspec.yaml
+--- base_pass/pubspec.yaml	2026-10-10 12:26:48.000000000 +0000
++++ work_pass/pubspec.yaml	2026-10-10 12:55:16.815490080 +0000
+@@ -1,7 +1,7 @@
+ name: gaotus_mobility_passenger
+ description: Passenger app for Gaotus Mobility Platform.
+ publish_to: none
+-version: 0.6.6+27
++version: 0.6.7+28
+ environment:
+   sdk: '>=3.4.0 <4.0.0'
+ dependencies:
