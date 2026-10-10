@@ -1,0 +1,37 @@
+name: Build Passenger v0.6.8 Payment Consent
+
+on:
+  push:
+    branches: [ chat-notifications-hotfix ]
+    paths:
+      - '.passenger068/**'
+      - '.github/workflows/build-passenger-v068-payment-consent.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build Passenger v0.6.8 Payment Consent
+        run: bash .passenger068/build068-payment-consent.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gaotus-Mobility-Passenger-v0.6.8-PAYMENT-CONSENT
+          path: |
+            Gaotus-Mobility-Passenger-v0.6.8-PAYMENT-CONSENT.apk
+            Gaotus-Mobility-Passenger-v0.6.8-PAYMENT-CONSENT-SOURCE.zip
+            SHA256SUMS-PASSENGER-V068.txt
+          if-no-files-found: error
