@@ -51,7 +51,22 @@ s=s.replace("          SizedBox(height: 4),\n          Text('The platform is fin
 p.write_text(s)
 PY
 
+# Complete visible Romanian localization sweep across Driver screens.
+python3 - <<'PY'
+from pathlib import Path
+import base64,zlib
+p=Path('.driver066/complete_ro_sweep.py.zlib.b64')
+Path('/tmp/complete_driver_ro_sweep.py').write_bytes(zlib.decompress(base64.b64decode(p.read_text().strip())))
+s=Path('/tmp/complete_driver_ro_sweep.py').read_text()
+s=s.replace("root=Path('/mnt/data/driver066_work')", "root=Path('driver')")
+Path('/tmp/complete_driver_ro_sweep.py').write_text(s)
+PY
+python3 /tmp/complete_driver_ro_sweep.py
+
 grep -q 'version: 0.6.6+21' driver/pubspec.yaml
+grep -q "'Call support'.tr" driver/lib/screens/driver_hub_screens.dart
+grep -q "'Nearby jobs'.tr" driver/lib/screens/nearby_jobs_screen.dart
+grep -q "'Add trip extra'.tr" driver/lib/screens/job_screen.dart
 
 cd driver
 python3 - <<'PY'
