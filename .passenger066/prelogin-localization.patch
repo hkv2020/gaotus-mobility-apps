@@ -1,0 +1,229 @@
+diff -ruN base_pass065/passenger/GAOTUS-MOBILITY-PASSENGER-v0.6.6-PRELOGIN-LOCALIZATION-QA.md work_pass066/passenger/GAOTUS-MOBILITY-PASSENGER-v0.6.6-PRELOGIN-LOCALIZATION-QA.md
+--- base_pass065/passenger/GAOTUS-MOBILITY-PASSENGER-v0.6.6-PRELOGIN-LOCALIZATION-QA.md	1970-01-01 00:00:00.000000000 +0000
++++ work_pass066/passenger/GAOTUS-MOBILITY-PASSENGER-v0.6.6-PRELOGIN-LOCALIZATION-QA.md	2026-10-10 12:06:09.475434108 +0000
+@@ -0,0 +1,22 @@
++# Gaotus Mobility Passenger v0.6.6+27 — Pre-Login Country Localization
++
++## Scope
++- Uses the public `/health` Country Pack before rendering unauthenticated UI.
++- Reads `health.country` and applies `country`, `locale`, `language/ui_language`, currency, timezone, phone prefix and units through the existing `CountryConfig`.
++- Caches the last known public country configuration in secure storage so the login screen keeps the correct language during temporary network loss.
++- Rechecks Country Pack before login and registration, so authentication errors are localized according to the selected Platform country.
++- Preserves cached Country Pack on logout/session expiry; authentication data is still cleared.
++- Adds Romanian translations for Platform authentication/registration errors that can appear before a user session exists.
++
++## No-regression boundaries
++- Firebase configuration unchanged.
++- Chat polling unchanged.
++- Passenger notification service unchanged.
++- Realtime service unchanged.
++- Booking, ride, parcel pricing and tracking flows unchanged.
++
++## Static verification
++- Romanian localization dictionary contains no duplicate keys.
++- Pre-login server detection uses the existing public `/health` endpoint; no Platform change is required.
++- Android package name and Firebase project files are unchanged.
++- Flutter SDK is not available in the current execution environment, so `flutter analyze` and release APK rebuild were not run here.
+diff -ruN base_pass065/passenger/README.md work_pass066/passenger/README.md
+--- base_pass065/passenger/README.md	2026-10-10 11:22:28.000000000 +0000
++++ work_pass066/passenger/README.md	2026-10-10 12:06:09.475548597 +0000
+@@ -26,3 +26,8 @@
+ - Adds Send Parcel alongside Ride without changing the existing ride quote/booking flow.
+ - Uses Mobility Platform /customer/deliveries and unified booking IDs.
+ - Adds delivery stop progress, driver live tracking and chat in the same app.
++
++## v0.6.6 Pre-Login Country Localization
++- Loads Country Pack from the public `/health` endpoint before unauthenticated UI is shown.
++- Caches the last known country/language so Romania stays Romanian at login after restart or brief network loss.
++- Localizes common login and registration errors before authentication.
+diff -ruN base_pass065/passenger/lib/config/app_config.dart work_pass066/passenger/lib/config/app_config.dart
+--- base_pass065/passenger/lib/config/app_config.dart	2026-10-10 11:22:28.000000000 +0000
++++ work_pass066/passenger/lib/config/app_config.dart	2026-10-10 12:05:01.994728051 +0000
+@@ -1,6 +1,6 @@
+ final class AppConfig {
+   static const appName = 'Gaotus Mobility';
+-  static const version = '0.6.5';
++  static const version = '0.6.6';
+   static const defaultServer = 'https://beaphoenix.eu';
+   static const namespace = '/wp-json/gaotus-mobility/v1';
+ 
+diff -ruN base_pass065/passenger/lib/core/localization.dart work_pass066/passenger/lib/core/localization.dart
+--- base_pass065/passenger/lib/core/localization.dart	2026-10-10 11:22:29.000000000 +0000
++++ work_pass066/passenger/lib/core/localization.dart	2026-10-10 12:05:01.994917151 +0000
+@@ -312,6 +312,21 @@
+     'Location delayed': 'Locație întârziată',
+     'Signal lost — showing last known position': 'Semnal pierdut — afișăm ultima poziție cunoscută',
+     'ago': 'în urmă',
++    'Login and password are required.': 'Utilizatorul și parola sunt obligatorii.',
++    'Too many login attempts. Try again later.': 'Prea multe încercări de autentificare. Încearcă din nou mai târziu.',
++    'Invalid credentials.': 'Date de autentificare incorecte.',
++    'This account is not valid for this app.': 'Acest cont nu este valid pentru această aplicație.',
++    'This account is not a passenger account.': 'Acest cont nu este un cont de pasager.',
++    'Invalid mobile token.': 'Tokenul mobil primit de la server nu este valid.',
++    'A valid email is required.': 'Este necesară o adresă de email validă.',
++    'An account with this email already exists.': 'Există deja un cont cu această adresă de email.',
++    'Password must be at least 8 characters.': 'Parola trebuie să aibă cel puțin 8 caractere.',
++    'Too many registration attempts. Try again later.': 'Prea multe încercări de înregistrare. Încearcă din nou mai târziu.',
++    'Network error. Check your internet connection and try again.': 'Eroare de rețea. Verifică conexiunea la internet și încearcă din nou.',
++    'The server returned an invalid response.': 'Serverul a returnat un răspuns invalid.',
++    'Request failed. Please try again.': 'Cererea a eșuat. Încearcă din nou.',
++    'Startup recovery failed.': 'Pornirea aplicației nu a putut fi finalizată.',
++    'Could not restore the saved session:': 'Sesiunea salvată nu a putut fi restaurată:',
+     'Your saved session expired. Please sign in again.': 'Sesiunea salvată a expirat. Autentifică-te din nou.',
+     'Could not restore the saved session.': 'Sesiunea salvată nu a putut fi restaurată.',
+     'Not connected.': 'Nu există conexiune.',
+diff -ruN base_pass065/passenger/lib/core/secure_store.dart work_pass066/passenger/lib/core/secure_store.dart
+--- base_pass065/passenger/lib/core/secure_store.dart	2026-09-22 16:34:07.000000000 +0000
++++ work_pass066/passenger/lib/core/secure_store.dart	2026-10-10 12:05:01.994773869 +0000
+@@ -9,10 +9,26 @@
+   static const _token = 'gmp_passenger_token';
+   static const _device = 'gmp_passenger_device';
+   static const _realtime = 'gmp_passenger_realtime';
++  static const _country = 'gmp_passenger_country';
+ 
+   Future<String?> readServer() => _storage.read(key: _server);
+   Future<String?> readToken() => _storage.read(key: _token);
+   Future<String?> readRealtime() => _storage.read(key: _realtime);
++
++  Future<Map<String,dynamic>?> readCountry() async {
++    final raw = await _storage.read(key: _country);
++    if (raw == null || raw.trim().isEmpty) return null;
++    try {
++      final decoded = jsonDecode(raw);
++      if (decoded is Map) return Map<String,dynamic>.from(decoded);
++    } catch (_) {}
++    return null;
++  }
++
++  Future<void> writeCountry(Map<String,dynamic> value) async {
++    if (value.isEmpty) return;
++    await _storage.write(key: _country, value: jsonEncode(value));
++  }
+   Future<void> writeRealtime(String? value) => value == null || value.isEmpty ? _storage.delete(key: _realtime) : _storage.write(key: _realtime, value: value);
+ 
+   Future<String> deviceId() async {
+diff -ruN base_pass065/passenger/lib/screens/auth_screen.dart work_pass066/passenger/lib/screens/auth_screen.dart
+--- base_pass065/passenger/lib/screens/auth_screen.dart	2026-10-10 11:22:28.000000000 +0000
++++ work_pass066/passenger/lib/screens/auth_screen.dart	2026-10-10 12:05:01.995142265 +0000
+@@ -42,7 +42,7 @@
+         await widget.session.login(site.text, email.text, password.text);
+       }
+     } catch (error) {
+-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
++      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.session.errorMessage ?? '$error')));
+     }
+   }
+ 
+@@ -128,7 +128,7 @@
+                   ),
+                   if (showServer) ...<Widget>[
+                     const SizedBox(height: 6),
+-                    TextField(controller: site, keyboardType: TextInputType.url, decoration: InputDecoration(labelText: 'Company server'.tr, hintText: 'https://example.com')),
++                    TextField(controller: site, keyboardType: TextInputType.url, textInputAction: TextInputAction.done, onSubmitted: (value) { widget.session.refreshPublicCountry(value).catchError((_) {}); }, decoration: InputDecoration(labelText: 'Company server'.tr, hintText: 'https://example.com')),
+                   ],
+                   const SizedBox(height: 22),
+                   FilledButton(
+diff -ruN base_pass065/passenger/lib/state/passenger_session.dart work_pass066/passenger/lib/state/passenger_session.dart
+--- base_pass065/passenger/lib/state/passenger_session.dart	2026-10-10 11:22:28.000000000 +0000
++++ work_pass066/passenger/lib/state/passenger_session.dart	2026-10-10 12:05:01.995055166 +0000
+@@ -98,9 +98,12 @@
+     try {
+       try { await _notifications.initialize().timeout(const Duration(seconds:4)); } catch (_) {}
+       try { await _push.initialize().timeout(const Duration(seconds:8)); } catch (_) {}
++      final cachedCountry=await _store.readCountry().timeout(const Duration(seconds:5));
++      if(cachedCountry!=null&&cachedCountry.isNotEmpty){country=Map<String,dynamic>.from(cachedCountry);CountryConfig.configure(country);}
+       serverUrl=await _store.readServer().timeout(const Duration(seconds:5)) ?? serverUrl;
+       token=await _store.readToken().timeout(const Duration(seconds:5));
+       realtimeUrl=await _store.readRealtime().timeout(const Duration(seconds:5));
++      if(serverUrl.isNotEmpty){try{await refreshPublicCountry(serverUrl,notify:false).timeout(const Duration(seconds:6));}catch(_){}}
+       if(serverUrl.isNotEmpty&&token!=null&&token!.isNotEmpty){
+         _api=ApiClient(siteUrl:serverUrl,token:token);
+         try {
+@@ -108,15 +111,15 @@
+           authenticated=true;
+           unawaited(_finishAuthenticatedBoot());
+         } on ApiException catch(e) {
+-          if(e.statusCode==401||e.statusCode==403){await _clear();errorMessage='Your saved session expired. Please sign in again.';}
+-          else {errorMessage=e.message;authenticated=false;}
++          if(e.statusCode==401||e.statusCode==403){await _clear();errorMessage='Your saved session expired. Please sign in again.'.tr;}
++          else {errorMessage=_friendlyError(e);authenticated=false;}
+         } catch(e) {
+-          errorMessage='Could not restore the saved session: $e';
++          errorMessage='${'Could not restore the saved session:'.tr} ${_friendlyError(e)}';
+           authenticated=false;
+         }
+       }
+     } catch(e) {
+-      errorMessage='Startup recovery: $e';
++      errorMessage='${'Startup recovery failed.'.tr} ${_friendlyError(e)}';
+       authenticated=false;
+     } finally {
+       booting=false;
+@@ -186,17 +189,43 @@
+     if(booking!=null){try{await _connectBooking(booking.id).timeout(const Duration(seconds:10));}catch(_){}}
+   }
+ 
++  Future<void> refreshPublicCountry(String site,{bool notify=true}) async {
++    final normalized=AppConfig.normalizeSiteUrl(site);
++    if(normalized.isEmpty)return;
++    final publicApi=ApiClient(siteUrl:normalized);
++    try{
++      final health=await publicApi.health();
++      final raw=health['country'];
++      if(raw is Map){
++        final cfg=Map<String,dynamic>.from(raw);
++        if(cfg.isNotEmpty){
++          country=cfg;
++          CountryConfig.configure(cfg);
++          await _store.writeCountry(cfg);
++          if(notify)notifyListeners();
++        }
++      }
++    }finally{publicApi.close();}
++  }
++
++  String _friendlyError(Object error){
++    final raw=error is ApiException?error.message:error.toString();
++    if(raw.startsWith('Network error:'))return 'Network error. Check your internet connection and try again.'.tr;
++    if(raw.startsWith('Request failed'))return 'Request failed. Please try again.'.tr;
++    return raw.tr;
++  }
++
+   Future<void> login(String site,String login,String password) async {
+     busy=true;errorMessage=null;notifyListeners(); final normalized=AppConfig.normalizeSiteUrl(site); final api=ApiClient(siteUrl:normalized);
+-    try{final r=await api.login(login.trim(),password,await _store.deviceId());final raw=(r['token']??'').toString();final user=r['user'];if(user is Map&&user['type']?.toString()!='passenger')throw ApiException('This account is not a passenger account.');if(!raw.startsWith('gmp_'))throw ApiException('Invalid mobile token.');serverUrl=normalized;token=raw;await _store.writeSession(serverUrl,raw);_api?.close();_api=ApiClient(siteUrl:serverUrl,token:raw);await _validateAndLoad();authenticated=true;unawaited(_finishAuthenticatedBoot());}catch(e){errorMessage='$e';rethrow;}finally{api.close();busy=false;notifyListeners();}
++    try{try{await refreshPublicCountry(normalized).timeout(const Duration(seconds:6));}catch(_){} final r=await api.login(login.trim(),password,await _store.deviceId());final raw=(r['token']??'').toString();final user=r['user'];if(user is Map&&user['type']?.toString()!='passenger')throw const ApiException('This account is not a passenger account.');if(!raw.startsWith('gmp_'))throw const ApiException('Invalid mobile token.');serverUrl=normalized;token=raw;await _store.writeSession(serverUrl,raw);_api?.close();_api=ApiClient(siteUrl:serverUrl,token:raw);await _validateAndLoad();authenticated=true;unawaited(_finishAuthenticatedBoot());}catch(e){errorMessage=_friendlyError(e);rethrow;}finally{api.close();busy=false;notifyListeners();}
+   }
+ 
+   Future<void> register({required String site,required String email,required String password,required String first,required String last,required String phone}) async {
+     busy=true;errorMessage=null;notifyListeners();final normalized=AppConfig.normalizeSiteUrl(site);final api=ApiClient(siteUrl:normalized);
+-    try{final r=await api.register(email:email.trim(),password:password,first:first.trim(),last:last.trim(),phone:phone.trim(),deviceId:await _store.deviceId());final raw=(r['token']??'').toString();if(!raw.startsWith('gmp_'))throw ApiException('Invalid mobile token.');serverUrl=normalized;token=raw;await _store.writeSession(serverUrl,raw);_api?.close();_api=ApiClient(siteUrl:serverUrl,token:raw);await _validateAndLoad();authenticated=true;unawaited(_finishAuthenticatedBoot());}catch(e){errorMessage='$e';rethrow;}finally{api.close();busy=false;notifyListeners();}
++    try{try{await refreshPublicCountry(normalized).timeout(const Duration(seconds:6));}catch(_){} final r=await api.register(email:email.trim(),password:password,first:first.trim(),last:last.trim(),phone:phone.trim(),deviceId:await _store.deviceId());final raw=(r['token']??'').toString();if(!raw.startsWith('gmp_'))throw const ApiException('Invalid mobile token.');serverUrl=normalized;token=raw;await _store.writeSession(serverUrl,raw);_api?.close();_api=ApiClient(siteUrl:serverUrl,token:raw);await _validateAndLoad();authenticated=true;unawaited(_finishAuthenticatedBoot());}catch(e){errorMessage=_friendlyError(e);rethrow;}finally{api.close();busy=false;notifyListeners();}
+   }
+ 
+-  Future<void> _validateAndLoad() async {final api=_api!;final m=await api.me();identity=m['user'] is Map?Map<String,dynamic>.from(m['user'] as Map):null;final rawCountry=m['country'];country=rawCountry is Map?Map<String,dynamic>.from(rawCountry):<String,dynamic>{};CountryConfig.configure(country);await refreshBookings(silent:true,connectRealtime:false,propagateErrors:true);}
++  Future<void> _validateAndLoad() async {final api=_api!;final m=await api.me();identity=m['user'] is Map?Map<String,dynamic>.from(m['user'] as Map):null;final rawCountry=m['country'];country=rawCountry is Map?Map<String,dynamic>.from(rawCountry):<String,dynamic>{};CountryConfig.configure(country);if(country.isNotEmpty)await _store.writeCountry(country);await refreshBookings(silent:true,connectRealtime:false,propagateErrors:true);}
+   Future<void> _discoverRealtime() async {try{final h=await _api!.health();final u=h['realtime_server_url']?.toString();if(u!=null&&u.isNotEmpty){realtimeUrl=u;await _store.writeRealtime(u);}}catch(_){} }
+   Future<void> _registerPush() async {if(_api==null||_push.token==null)return;try{await _api!.pushRegister(_push.token!,_push.platform);}catch(_){} }
+   void _startPoll(){
+@@ -382,7 +411,7 @@
+   Future<void> rate(int id,int stars,String comment) async {await _api!.rate(id,stars,comment);await refreshBooking(id);}
+ 
+   Future<void> logout() async {try{await _api?.logout();}catch(_){}await _clear();notifyListeners();}
+-  Future<void> _clear() async {_poll?.cancel();_livePoll?.cancel();await _realtime.disconnect();_api?.close();_api=null;authenticated=false;token=null;identity=null;country=<String,dynamic>{};CountryConfig.reset();bookings=[];activeBooking=null;tracking=null;nearbyCars=<NearbyCar>[];await _store.clearSession();}
++  Future<void> _clear() async {_poll?.cancel();_livePoll?.cancel();await _realtime.disconnect();_api?.close();_api=null;authenticated=false;token=null;identity=null;bookings=[];activeBooking=null;tracking=null;nearbyCars=<NearbyCar>[];await _store.clearSession();}
+ 
+ 
+   @override
+diff -ruN base_pass065/passenger/pubspec.yaml work_pass066/passenger/pubspec.yaml
+--- base_pass065/passenger/pubspec.yaml	2026-10-10 11:22:28.000000000 +0000
++++ work_pass066/passenger/pubspec.yaml	2026-10-10 12:05:01.994609736 +0000
+@@ -1,7 +1,7 @@
+ name: gaotus_mobility_passenger
+ description: Passenger app for Gaotus Mobility Platform.
+ publish_to: none
+-version: 0.6.5+26
++version: 0.6.6+27
+ environment:
+   sdk: '>=3.4.0 <4.0.0'
+ dependencies:
