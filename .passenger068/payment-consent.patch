@@ -1,0 +1,138 @@
+diff -ruN base_pass/GAOTUS-MOBILITY-PASSENGER-v0.6.8-PAYMENT-CONSENT-QA.md work_pass/GAOTUS-MOBILITY-PASSENGER-v0.6.8-PAYMENT-CONSENT-QA.md
+--- base_pass/GAOTUS-MOBILITY-PASSENGER-v0.6.8-PAYMENT-CONSENT-QA.md	1970-01-01 00:00:00.000000000 +0000
++++ work_pass/GAOTUS-MOBILITY-PASSENGER-v0.6.8-PAYMENT-CONSENT-QA.md	2026-10-10 14:04:33.275376941 +0000
+@@ -0,0 +1,8 @@
++# Gaotus Mobility Passenger v0.6.8+29 — Explicit Extras Autocharge Consent
++
++- Online ride checkout now exposes an explicit opt-in for automatic charging of verified trip extras.
++- Consent defaults OFF and is forced OFF when Pay in Car is selected.
++- The app sends `extras_autocharge_consent` to the Platform only for online bookings.
++- The explanatory copy states that waiting/parking extras are charged only when a reusable saved payment method is available; otherwise a payment link is sent.
++- Romania localisation is included for both consent title and explanation.
++- No changes to Firebase, push notification, realtime, chat, GPS-first map logic, map provider, package id or notification channel ids.
+diff -ruN base_pass/README.md work_pass/README.md
+--- base_pass/README.md	2026-10-10 13:26:50.000000000 +0000
++++ work_pass/README.md	2026-10-10 14:04:33.275376941 +0000
+@@ -31,3 +31,6 @@
+ - Loads Country Pack from the public `/health` endpoint before unauthenticated UI is shown.
+ - Caches the last known country/language so Romania stays Romanian at login after restart or brief network loss.
+ - Localizes common login and registration errors before authentication.
++
++## v0.6.8+29 — Payment consent
++Online ride booking includes an explicit, off-by-default consent control for verified extras autocharge. The Platform remains authoritative: consent alone does not permit a charge unless a reusable owned WooCommerce token and compatible gateway are available.
+diff -ruN base_pass/lib/config/app_config.dart work_pass/lib/config/app_config.dart
+--- base_pass/lib/config/app_config.dart	2026-10-10 13:28:15.000000000 +0000
++++ work_pass/lib/config/app_config.dart	2026-10-10 14:03:27.942402032 +0000
+@@ -1,6 +1,6 @@
+ final class AppConfig {
+   static const appName = 'Gaotus Mobility';
+-  static const version = '0.6.7';
++  static const version = '0.6.8';
+   static const defaultServer = 'https://beaphoenix.eu';
+   static const namespace = '/wp-json/gaotus-mobility/v1';
+ 
+diff -ruN base_pass/lib/core/localization.dart work_pass/lib/core/localization.dart
+--- base_pass/lib/core/localization.dart	2026-10-10 13:28:15.000000000 +0000
++++ work_pass/lib/core/localization.dart	2026-10-10 14:03:27.942183158 +0000
+@@ -261,6 +261,8 @@
+     'Secure card payment': 'Plată securizată cu cardul',
+     'Pay in car': 'Plată în mașină',
+     'Pay your driver at the end of the trip': 'Plătește șoferului la finalul cursei',
++    'Allow verified trip extras to be charged automatically': 'Permite debitarea automată a costurilor suplimentare verificate',
++    'If a reusable saved payment method is available, verified extras such as waiting or parking may be charged after the trip. Otherwise, we’ll send a payment link.': 'Dacă există o metodă de plată salvată reutilizabilă, costurile suplimentare verificate, precum așteptarea sau parcarea, pot fi debitate după cursă. În caz contrar, îți trimitem un link de plată.',
+     'Could not refresh the fare. Please request the ride again.': 'Tariful nu a putut fi actualizat. Solicită din nou cursa.',
+     'Rides for you': 'Curse disponibile',
+     'Available ride': 'Cursă disponibilă',
+diff -ruN base_pass/lib/screens/quote_screen.dart work_pass/lib/screens/quote_screen.dart
+--- base_pass/lib/screens/quote_screen.dart	2026-10-10 13:28:15.000000000 +0000
++++ work_pass/lib/screens/quote_screen.dart	2026-10-10 14:03:27.941921391 +0000
+@@ -25,6 +25,7 @@
+ class _QuoteScreenState extends State<QuoteScreen>{
+   VehicleQuote? selected;
+   String payment='online';
++  bool extrasAutochargeConsent=false;
+   late FareQuote currentQuote;
+   Timer? nearbyTimer;
+   bool _pickupConfirmed=false;
+@@ -81,7 +82,7 @@
+         ]),
+       )),
+     );
+-    if(value!=null)setState(()=>payment=value);
++    if(value!=null)setState((){payment=value;if(payment!='online')extrasAutochargeConsent=false;});
+   }
+ 
+   Future<void> book() async{
+@@ -170,7 +171,7 @@
+ 
+   Future<void> _performBooking(VehicleQuote vehicle) async{
+     try{
+-      final booking=await widget.session.createBooking(vehicle,paymentMethod:payment);
++      final booking=await widget.session.createBooking(vehicle,paymentMethod:payment,extrasAutochargeConsent:payment=='online'&&extrasAutochargeConsent);
+       final p=booking.payment;
+       final url=p['payment_url']?.toString();
+       if(payment=='online'&&url!=null&&url.isNotEmpty)await launchUrl(Uri.parse(url),mode:LaunchMode.externalApplication);
+@@ -287,6 +288,8 @@
+         selected:selected,
+         busy:widget.session.busy,
+         pickupTime:_scheduleLabel(j),
++        extrasAutochargeConsent:extrasAutochargeConsent,
++        onAutochargeChanged:(value)=>setState(()=>extrasAutochargeConsent=value),
+         onPayment:choosePayment,
+         onBook:book,
+       ),
+@@ -410,8 +413,8 @@
+ }
+ 
+ class _RideActionBar extends StatelessWidget{
+-  const _RideActionBar({required this.payment,required this.selected,required this.busy,required this.pickupTime,required this.onPayment,required this.onBook});
+-  final String payment;final VehicleQuote? selected;final bool busy;final String pickupTime;final VoidCallback onPayment;final VoidCallback onBook;
++  const _RideActionBar({required this.payment,required this.selected,required this.busy,required this.pickupTime,required this.extrasAutochargeConsent,required this.onAutochargeChanged,required this.onPayment,required this.onBook});
++  final String payment;final VehicleQuote? selected;final bool busy;final String pickupTime;final bool extrasAutochargeConsent;final ValueChanged<bool> onAutochargeChanged;final VoidCallback onPayment;final VoidCallback onBook;
+ 
+   @override Widget build(BuildContext context)=>Material(
+     color:Colors.white,elevation:18,
+@@ -435,6 +438,19 @@
+             ]),
+           ),
+         ),
++        if(payment=='online')...<Widget>[
++          const SizedBox(height:2),
++          CheckboxListTile(
++            value:extrasAutochargeConsent,
++            onChanged:busy?null:(value)=>onAutochargeChanged(value??false),
++            contentPadding:EdgeInsets.zero,
++            controlAffinity:ListTileControlAffinity.leading,
++            dense:true,
++            visualDensity:VisualDensity.compact,
++            title:Text('Allow verified trip extras to be charged automatically'.tr,style:const TextStyle(fontWeight:FontWeight.w800,fontSize:13)),
++            subtitle:Text('If a reusable saved payment method is available, verified extras such as waiting or parking may be charged after the trip. Otherwise, we’ll send a payment link.'.tr,style:Theme.of(context).textTheme.bodySmall),
++          ),
++        ],
+         const SizedBox(height:4),
+         FilledButton(
+           onPressed:busy||selected==null?null:onBook,
+diff -ruN base_pass/lib/state/passenger_session.dart work_pass/lib/state/passenger_session.dart
+--- base_pass/lib/state/passenger_session.dart	2026-10-10 13:26:50.000000000 +0000
++++ work_pass/lib/state/passenger_session.dart	2026-10-10 14:03:27.942084883 +0000
+@@ -382,7 +382,7 @@
+   Future<PlaceSelection> reverseGeocode(double lat,double lng) async {final api=_api;if(api==null)throw const ApiException('Not connected.');final r=await api.reverseGeocode(lat,lng);final raw=r['place'];if(raw is! Map)throw const ApiException('Unable to resolve address.');return PlaceSelection.fromJson(Map<String,dynamic>.from(raw));}
+ 
+   Future<FareQuote> quote(Map<String,Object?> request) async {if(_api==null)throw const ApiException('Not connected.');busy=true;errorMessage=null;notifyListeners();try{lastQuoteRequest=Map<String,Object?>.from(request);lastQuote=FareQuote.fromJson(await _api!.quote(request));return lastQuote!;}finally{busy=false;notifyListeners();}}
+-  Future<PassengerBooking> createBooking(VehicleQuote vehicle,{String paymentMethod='online'}) async {if(_api==null||lastQuoteRequest==null)throw const ApiException('Request a fare first.');final body=<String,Object?>{...lastQuoteRequest!,'vehicle_id':vehicle.id,'payment_method':paymentMethod,'terms_accept':true};busy=true;notifyListeners();try{final r=await _api!.createBooking(body).timeout(const Duration(seconds:12));final b=PassengerBooking.fromJson(Map<String,dynamic>.from(r['booking'] as Map));bookings.insert(0,b);activeBooking=b;notifyListeners();unawaited(_connectBooking(b.id));unawaited(refreshBooking(b.id,silent:true));return b;}finally{busy=false;notifyListeners();}}
++  Future<PassengerBooking> createBooking(VehicleQuote vehicle,{String paymentMethod='online',bool extrasAutochargeConsent=false}) async {if(_api==null||lastQuoteRequest==null)throw const ApiException('Request a fare first.');final body=<String,Object?>{...lastQuoteRequest!,'vehicle_id':vehicle.id,'payment_method':paymentMethod,'extras_autocharge_consent':paymentMethod=='online'&&extrasAutochargeConsent,'terms_accept':true};busy=true;notifyListeners();try{final r=await _api!.createBooking(body).timeout(const Duration(seconds:12));final b=PassengerBooking.fromJson(Map<String,dynamic>.from(r['booking'] as Map));bookings.insert(0,b);activeBooking=b;notifyListeners();unawaited(_connectBooking(b.id));unawaited(refreshBooking(b.id,silent:true));return b;}finally{busy=false;notifyListeners();}}
+   Future<DeliveryQuote> deliveryQuote(Map<String,Object?> body) async {
+     final api=_api;if(api==null)throw const ApiException('Not connected.');
+     busy=true;errorMessage=null;notifyListeners();
+diff -ruN base_pass/pubspec.yaml work_pass/pubspec.yaml
+--- base_pass/pubspec.yaml	2026-10-10 13:28:15.000000000 +0000
++++ work_pass/pubspec.yaml	2026-10-10 14:03:27.942355553 +0000
+@@ -1,7 +1,7 @@
+ name: gaotus_mobility_passenger
+ description: Passenger app for Gaotus Mobility Platform.
+ publish_to: none
+-version: 0.6.7+28
++version: 0.6.8+29
+ environment:
+   sdk: '>=3.4.0 <4.0.0'
+ dependencies:
