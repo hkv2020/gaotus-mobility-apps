@@ -1,0 +1,250 @@
+diff -ruN base_driver066/driver/GAOTUS-MOBILITY-DRIVER-v0.6.7-PRELOGIN-LOCALIZATION-QA.md work_driver067/driver/GAOTUS-MOBILITY-DRIVER-v0.6.7-PRELOGIN-LOCALIZATION-QA.md
+--- base_driver066/driver/GAOTUS-MOBILITY-DRIVER-v0.6.7-PRELOGIN-LOCALIZATION-QA.md	1970-01-01 00:00:00.000000000 +0000
++++ work_driver067/driver/GAOTUS-MOBILITY-DRIVER-v0.6.7-PRELOGIN-LOCALIZATION-QA.md	2026-10-10 12:06:09.475487196 +0000
+@@ -0,0 +1,21 @@
++# Gaotus Mobility Driver v0.6.7+22 — Pre-Login Country Localization
++
++## Scope
++- Uses the public `/health` Country Pack before rendering unauthenticated UI whenever the server URL is known.
++- Defaults to the existing Gaotus staging/production server `https://beaphoenix.eu` when no `GMP_API_BASE` dart-define is supplied, while still allowing builds to override it.
++- Reads `health.country`, applies the existing `CountryConfig`, and securely caches the last known country configuration.
++- Rechecks Country Pack when the server field is submitted/loses focus and immediately before authentication.
++- Localizes sign-in stages and common Platform authentication failures in Romanian.
++- Cached Country Pack survives logout so the next login remains in the selected country language.
++
++## No-regression boundaries
++- Firebase configuration unchanged.
++- Driver chat polling unchanged.
++- Push/offer notification services unchanged.
++- Realtime/GPS/dispatch/job/earnings flows unchanged.
++
++## Static verification
++- Romanian localization dictionary contains no duplicate keys.
++- Pre-login server detection uses the existing public `/health` endpoint; no Platform change is required.
++- Android package name and Firebase project files are unchanged.
++- Flutter SDK is not available in the current execution environment, so `flutter analyze` and release APK rebuild were not run here.
+diff -ruN base_driver066/driver/README.md work_driver067/driver/README.md
+--- base_driver066/driver/README.md	2026-10-10 11:13:49.000000000 +0000
++++ work_driver067/driver/README.md	2026-10-10 12:06:09.475654995 +0000
+@@ -14,3 +14,8 @@
+ - Existing auth, realtime WebSocket/HTTP fallback, GPS, push, dispatch, trip state, extras, completion and earnings contracts preserved.
+ 
+ Backend target: Gaotus Mobility Platform 1.3.13+ and the existing realtime service.
++
++## v0.6.7 Pre-Login Country Localization
++- Loads Country Pack from the public `/health` endpoint before login whenever the server is known.
++- Caches the last known country/language and refreshes it when the server URL is entered or authentication starts.
++- Localizes sign-in progress and common authentication errors.
+diff -ruN base_driver066/driver/lib/config/app_config.dart work_driver067/driver/lib/config/app_config.dart
+--- base_driver066/driver/lib/config/app_config.dart	2026-10-10 11:13:49.000000000 +0000
++++ work_driver067/driver/lib/config/app_config.dart	2026-10-10 12:05:39.818871847 +0000
+@@ -1,10 +1,10 @@
+ final class AppConfig {
+   static const String appName = 'Gaotus Mobility Driver';
+-  static const String version = '0.6.6';
++  static const String version = '0.6.7';
+   static const String namespace = '/wp-json/gaotus-mobility/v1';
+   static const String defaultServer = String.fromEnvironment(
+     'GMP_API_BASE',
+-    defaultValue: '',
++    defaultValue: 'https://beaphoenix.eu',
+   );
+ 
+   static String normalizeSiteUrl(String value) {
+diff -ruN base_driver066/driver/lib/core/localization.dart work_driver067/driver/lib/core/localization.dart
+--- base_driver066/driver/lib/core/localization.dart	2026-10-10 11:13:49.000000000 +0000
++++ work_driver067/driver/lib/core/localization.dart	2026-10-10 12:05:01.995420597 +0000
+@@ -204,6 +204,19 @@
+     "Your ride has been cancelled.": "Cursa a fost anulată.",
+     "Your delivery status has changed.": "Statusul livrării s-a schimbat.",
+     "Your ride status has changed.": "Statusul cursei s-a schimbat.",
++    'Checking regional settings…': 'Verificăm setările regionale…',
++    'Contacting server…': 'Contactăm serverul…',
++    'Opening driver session…': 'Deschidem sesiunea șoferului…',
++    'Sign-in timed out. Check the server URL and internet connection, then try again.': 'Autentificarea a expirat. Verifică URL-ul serverului și conexiunea la internet, apoi încearcă din nou.',
++    'This account is not linked to a driver profile.': 'Acest cont nu este asociat unui profil de șofer.',
++    'Server did not return a valid driver token.': 'Serverul nu a returnat un token valid pentru șofer.',
++    'Login and password are required.': 'Utilizatorul și parola sunt obligatorii.',
++    'Too many login attempts. Try again later.': 'Prea multe încercări de autentificare. Încearcă din nou mai târziu.',
++    'Invalid credentials.': 'Date de autentificare incorecte.',
++    'This account is not valid for this app.': 'Acest cont nu este valid pentru această aplicație.',
++    'Network error. Check your internet connection and try again.': 'Eroare de rețea. Verifică conexiunea la internet și încearcă din nou.',
++    'Request failed. Please try again.': 'Cererea a eșuat. Încearcă din nou.',
++    'Startup recovery failed.': 'Pornirea aplicației nu a putut fi finalizată.',
+     'Login failed.': 'Autentificarea a eșuat.',
+     'WordPress site URL': 'URL site WordPress',
+     'Enter a valid site URL.': 'Introdu un URL valid pentru site.',
+diff -ruN base_driver066/driver/lib/core/secure_store.dart work_driver067/driver/lib/core/secure_store.dart
+--- base_driver066/driver/lib/core/secure_store.dart	2026-10-10 11:13:49.000000000 +0000
++++ work_driver067/driver/lib/core/secure_store.dart	2026-10-10 12:05:01.995321119 +0000
+@@ -12,11 +12,27 @@
+   static const _tokenKey = 'gmp_mobile_token';
+   static const _realtimeKey = 'gmp_realtime_url';
+   static const _deviceIdKey = 'gmp_device_id';
++  static const _countryKey = 'gmp_country_config';
+ 
+   Future<String?> readServer() => _storage.read(key: _serverKey);
+   Future<String?> readToken() => _storage.read(key: _tokenKey);
+   Future<String?> readRealtimeUrl() => _storage.read(key: _realtimeKey);
+ 
++  Future<Map<String,dynamic>?> readCountry() async {
++    final raw = await _storage.read(key: _countryKey);
++    if (raw == null || raw.trim().isEmpty) return null;
++    try {
++      final decoded = jsonDecode(raw);
++      if (decoded is Map) return Map<String,dynamic>.from(decoded);
++    } catch (_) {}
++    return null;
++  }
++
++  Future<void> writeCountry(Map<String,dynamic> value) async {
++    if (value.isEmpty) return;
++    await _storage.write(key: _countryKey, value: jsonEncode(value));
++  }
++
+   Future<String> readOrCreateDeviceId() async {
+     final current = await _storage.read(key: _deviceIdKey);
+     if (current != null && current.trim().isNotEmpty) return current.trim();
+diff -ruN base_driver066/driver/lib/screens/login_screen.dart work_driver067/driver/lib/screens/login_screen.dart
+--- base_driver066/driver/lib/screens/login_screen.dart	2026-10-10 11:13:49.000000000 +0000
++++ work_driver067/driver/lib/screens/login_screen.dart	2026-10-10 12:05:01.995785136 +0000
+@@ -102,6 +102,8 @@
+                         hintText: 'https://taxi-company.co.uk',
+                         prefixIcon: Icon(Icons.dns_outlined),
+                       ),
++                      onFieldSubmitted: (value) { widget.session.refreshPublicCountry(value).catchError((_) {}); },
++                      onTapOutside: (_) { widget.session.refreshPublicCountry(_serverController.text).catchError((_) {}); FocusScope.of(context).unfocus(); },
+                       validator: (value) {
+                         final normalized = AppConfig.normalizeSiteUrl(value ?? '');
+                         final uri = Uri.tryParse(normalized);
+@@ -154,7 +156,7 @@
+                     if (session.busy && session.loginStage != null) ...<Widget>[
+                       const SizedBox(height: 12),
+                       Text(
+-                        session.loginStage!,
++                        session.loginStage!.tr,
+                         textAlign: TextAlign.center,
+                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                               color: Theme.of(context).colorScheme.onSurfaceVariant,
+@@ -164,7 +166,7 @@
+                     if (session.errorMessage != null) ...<Widget>[
+                       const SizedBox(height: 16),
+                       Text(
+-                        session.errorMessage!,
++                        session.errorMessage!.tr,
+                         style: TextStyle(color: Theme.of(context).colorScheme.error),
+                       ),
+                     ],
+diff -ruN base_driver066/driver/lib/state/app_session.dart work_driver067/driver/lib/state/app_session.dart
+--- base_driver066/driver/lib/state/app_session.dart	2026-10-10 11:13:49.000000000 +0000
++++ work_driver067/driver/lib/state/app_session.dart	2026-10-10 12:05:01.995681102 +0000
+@@ -123,12 +123,15 @@
+     pushAvailable = _push.available;
+ 
+     try {
++      final cachedCountry = await _store.readCountry().timeout(const Duration(seconds: 4));
++      if (cachedCountry != null && cachedCountry.isNotEmpty) CountryConfig.configure(cachedCountry);
+       final storedServer = await _store.readServer().timeout(const Duration(seconds: 4));
+       final storedToken = await _store.readToken().timeout(const Duration(seconds: 4));
+       final storedRealtime = await _store.readRealtimeUrl().timeout(const Duration(seconds: 4));
+       if (storedServer != null && storedServer.isNotEmpty) serverUrl = storedServer;
+       token = storedToken;
+       realtimeUrl = storedRealtime;
++      if (serverUrl.isNotEmpty) { try { await refreshPublicCountry(serverUrl, notify: false).timeout(const Duration(seconds: 6)); } catch (_) {} }
+ 
+       if (serverUrl.isNotEmpty && token != null && token!.isNotEmpty) {
+         _api = ApiClient(siteUrl: serverUrl, token: token);
+@@ -139,7 +142,7 @@
+         return;
+       }
+     } catch (error) {
+-      errorMessage = 'Startup recovery: ${_message(error)}';
++      errorMessage = '${'Startup recovery failed.'.tr} ${_friendlyError(error)}';
+     }
+     booting = false;
+     notifyListeners();
+@@ -167,6 +170,31 @@
+     unawaited(_finishRuntimeBootstrap());
+   }
+ 
++  Future<void> refreshPublicCountry(String siteUrl,{bool notify=true}) async {
++    final normalized=AppConfig.normalizeSiteUrl(siteUrl);
++    if(normalized.isEmpty)return;
++    final publicApi=ApiClient(siteUrl: normalized);
++    try{
++      final health=await publicApi.health();
++      final raw=health['country'];
++      if(raw is Map){
++        final cfg=Map<String,dynamic>.from(raw);
++        if(cfg.isNotEmpty){
++          CountryConfig.configure(cfg);
++          await _store.writeCountry(cfg);
++          if(notify)notifyListeners();
++        }
++      }
++    }finally{publicApi.close();}
++  }
++
++  String _friendlyError(Object error){
++    final raw=error is ApiException?error.message:_message(error);
++    if(raw.startsWith('Network error:'))return 'Network error. Check your internet connection and try again.'.tr;
++    if(raw.startsWith('Request failed'))return 'Request failed. Please try again.'.tr;
++    return raw.tr;
++  }
++
+   Future<void> login({
+     required String siteUrl,
+     required String login,
+@@ -176,6 +204,9 @@
+     if (normalized.isEmpty) throw const ApiException('Enter the WordPress site URL.');
+     busy = true;
+     errorMessage = null;
++    loginStage = 'Checking regional settings…';
++    notifyListeners();
++    try { await refreshPublicCountry(normalized).timeout(const Duration(seconds: 6)); } catch (_) {}
+     loginStage = 'Contacting server…';
+     notifyListeners();
+     final api = ApiClient(siteUrl: normalized);
+@@ -230,7 +261,7 @@
+ 
+       unawaited(_finishLoginBootstrap());
+     } catch (error) {
+-      errorMessage = _message(error);
++      errorMessage = _friendlyError(error);
+       loginStage = null;
+       if (!authenticated && _api != null) {
+         _api?.close();
+@@ -412,7 +443,9 @@
+     notifyListeners();
+     try {
+       driverHub = await api.driverAppHub();
+-      CountryConfig.configure(mapValue(driverHub['country']));
++      final cfg=mapValue(driverHub['country']);
++      CountryConfig.configure(cfg);
++      if(cfg.isNotEmpty)await _store.writeCountry(cfg);
+       hubError = null;
+     } on ApiException catch (error) {
+       if (error.statusCode == 401 || error.statusCode == 403) {
+@@ -439,7 +472,9 @@
+       final hub = mapValue(result['hub']);
+       if (hub.isNotEmpty) {
+         driverHub = hub;
+-        CountryConfig.configure(mapValue(driverHub['country']));
++        final cfg=mapValue(driverHub['country']);
++        CountryConfig.configure(cfg);
++        if(cfg.isNotEmpty)await _store.writeCountry(cfg);
+       } else {
+         final pref = mapValue(result['preferences']);
+         if (pref.isNotEmpty) driverHub = <String, dynamic>{...driverHub, 'preferences': pref};
+diff -ruN base_driver066/driver/pubspec.yaml work_driver067/driver/pubspec.yaml
+--- base_driver066/driver/pubspec.yaml	2026-10-10 11:13:49.000000000 +0000
++++ work_driver067/driver/pubspec.yaml	2026-10-10 12:05:01.995244296 +0000
+@@ -1,7 +1,7 @@
+ name: gaotus_mobility_driver
+ description: Driver application for Gaotus Mobility Platform.
+ publish_to: "none"
+-version: 0.6.6+21
++version: 0.6.7+22
+ 
+ environment:
+   sdk: ">=3.8.0 <4.0.0"
