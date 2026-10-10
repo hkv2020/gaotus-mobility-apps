@@ -38,7 +38,7 @@ import base64,zlib
 p=Path('.driver066/ro-sweep.patch.zlib.b64')
 Path('/tmp/driver066-ro.patch').write_bytes(zlib.decompress(base64.b64decode(p.read_text().strip())))
 PY
-patch -p1 -d driver < /tmp/driver066-ro.patch
+patch -p5 -d driver < /tmp/driver066-ro.patch
 
 grep -q 'version: 0.6.6+21' driver/pubspec.yaml
 
