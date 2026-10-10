@@ -11,8 +11,9 @@ sha256sum \
   driver/android/app/google-services.json \
   > /tmp/driver068-critical.before
 
-# Apply only GPS-first map startup delta.
+# Apply GPS-first startup delta, then remove every remaining active London map fallback.
 patch -p1 -d driver < .driver068/gps-first-map.patch
+python3 .map-cleanup/driver_global_map_cleanup.py
 
 # The nullable branch has already narrowed center to LatLng in the map branch.
 # Remove the redundant non-null assertion so flutter analyze stays warning-clean
@@ -38,8 +39,10 @@ diff -u /tmp/driver068-critical.before /tmp/driver068-critical.after
 grep -q 'version: 0.6.8+23' driver/pubspec.yaml
 grep -q "static const String version = '0.6.8'" driver/lib/config/app_config.dart
 grep -q 'unawaited(widget.session.primeLocation())' driver/lib/screens/driver_home_screen.dart
-! grep -q 'LatLng(51.5074, -0.1278)' driver/lib/screens/driver_home_screen.dart
+! grep -R -q --include='*.dart' -E '51\.5074|-0\.1278' driver/lib
 ! grep -q 'initialCenter: center!' driver/lib/screens/driver_home_screen.dart
+grep -q 'center == null ? const Center' driver/lib/screens/job_screen.dart
+grep -q 'center == null ? const Center' driver/lib/screens/operations_job_screen.dart
 grep -q 'ai.gaotus.gaotus_mobility_driver' driver/android/app/google-services.json
 
 cd driver
