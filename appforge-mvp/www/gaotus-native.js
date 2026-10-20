@@ -13,7 +13,7 @@
   const androidResult=(value,action)=>parse(value,{ok:false,platform:'android',action,error:'invalid_native_response'});
 
   const Native={
-    version:'0.1.1',
+    version:'0.1.2',
     platform:()=>hasAndroid()?'android':hasIOS()?'ios':'web',
     available:()=>hasAndroid()||hasIOS(),
     async ping(){
