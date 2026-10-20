@@ -1,0 +1,86 @@
+{
+  "appId": "ai.gaotus.appforge.uinorefresh",
+  "appName": "AppForge UI No Refresh Smoke",
+  "mode": "remote",
+  "url": "https://example.com/",
+  "themeColor": "#111827",
+  "accentColor": "#fbbf24",
+  "versionName": "0.3.0",
+  "versionCode": 3,
+  "features": {
+    "share": true,
+    "haptics": true,
+    "openExternal": true,
+    "deviceInfo": true,
+    "camera": false,
+    "location": false
+  },
+  "permissions": {
+    "camera": false,
+    "location": false,
+    "microphone": false,
+    "storage": false,
+    "vibration": true,
+    "play_services": false
+  },
+  "appSettings": {
+    "status_bar_color": "#111827",
+    "navigation_bar_color": "#111827",
+    "orientation": "portrait",
+    "fullscreen": true,
+    "pinch_zoom": false,
+    "disable_cache": false,
+    "kiosk_mode": false,
+    "scroll_bounce": false,
+    "pull_to_refresh": false,
+    "page_loader": false,
+    "confirm_exit": true
+  },
+  "linkHandling": {
+    "external_mode": "external",
+    "allow_subdomains": true,
+    "allow_http": false,
+    "deep_linking": false,
+    "custom_scheme": ""
+  },
+  "overrides": {
+    "custom_css": "",
+    "custom_js": "",
+    "user_agent": "",
+    "custom_headers": "",
+    "cookie_persistence": true
+  },
+  "uiNavigation": {
+    "header_enabled": false,
+    "header_title": "",
+    "header_background": "#111827",
+    "header_text": "#ffffff",
+    "bottom_nav_enabled": true,
+    "bottom_nav_items": [
+      {"label": "Home", "url": "/", "icon": "home"},
+      {"label": "About", "url": "/about", "icon": "info"}
+    ],
+    "floating_button_enabled": false,
+    "floating_button_label": "",
+    "floating_button_url": ""
+  },
+  "notifications": {
+    "provider": "none",
+    "ask_permission_on_launch": true,
+    "disable_foreground": false,
+    "notification_icon_url": "",
+    "firebase_project_id": "",
+    "onesignal_app_id": ""
+  },
+  "security": {
+    "prevent_screenshots": false,
+    "biometric_lock": false
+  },
+  "communication": {
+    "native_share": true,
+    "external_phone_email": true
+  },
+  "deviceHardware": {
+    "keep_screen_on": false
+  }
+}
