@@ -1,8 +1,8 @@
 {
   "name": "gaotus-appforge-mvp",
-  "version": "0.1.2",
+  "version": "0.4.0",
   "private": true,
-  "description": "Gaotus AppForge master wrapper MVP for Android and iOS",
+  "description": "Gaotus AppForge master wrapper and verified Android build factory",
   "type": "module",
   "scripts": {
     "generate": "node scripts/generate-client.mjs clients/demo.json",
@@ -10,8 +10,10 @@
     "test": "node --test tests/*.test.mjs",
     "native:init": "npm run generate && npx cap add android && npx cap add ios && node scripts/patch-native.mjs all && node scripts/apply-origin-policy.mjs",
     "native:patch": "node scripts/patch-native.mjs all && node scripts/apply-origin-policy.mjs",
-    "android:debug": "npm run generate && npx cap sync android && node scripts/patch-native.mjs android && node scripts/apply-origin-policy.mjs && cd android && ./gradlew assembleDebug",
-    "android:bundle": "npm run generate && npx cap sync android && node scripts/patch-native.mjs android && node scripts/apply-origin-policy.mjs && cd android && ./gradlew bundleRelease",
+    "android:runtime": "node scripts/patch-android-runtime.mjs",
+    "android:verify": "node scripts/verify-android-runtime.mjs",
+    "android:debug": "npm run generate && npx cap sync android && npm run android:runtime && cd android && ./gradlew assembleDebug",
+    "android:bundle": "npm run generate && npx cap sync android && npm run android:runtime && cd android && ./gradlew bundleRelease",
     "ios:sync": "npm run generate && npx cap sync ios && node scripts/patch-native.mjs ios"
   },
   "dependencies": {
