@@ -15,6 +15,7 @@ function walk(dir, out = []) {
 const client = validateClient(readJSON(path.join(rootDir, 'generated-client.json')));
 const links = client.linkHandling || {};
 const overrides = client.overrides || {};
+const appSettings = client.appSettings || {};
 const files = walk(path.join(rootDir, 'android', 'app', 'src', 'main', 'java'));
 if (files.length !== 1) throw new Error(`Expected one MainActivity.java, found ${files.length}`);
 const file = files[0];
@@ -22,10 +23,12 @@ let src = fs.readFileSync(file, 'utf8');
 
 const externalMode = links.external_mode === 'in_app' ? 'in_app' : 'external';
 const allowSubdomains = links.allow_subdomains !== false;
+const lifecycleUi = appSettings.page_loader === true || appSettings.pull_to_refresh === true;
 const css64 = Buffer.from(String(overrides.custom_css || ''), 'utf8').toString('base64');
 const js64 = Buffer.from(String(overrides.custom_js || ''), 'utf8').toString('base64');
 
 if (!src.includes('import android.content.Intent;')) src = src.replace('import android.app.AlertDialog;\n', 'import android.app.AlertDialog;\nimport android.content.Intent;\n');
+if (!src.includes('import android.graphics.Bitmap;')) src = src.replace('import android.graphics.Color;\n', 'import android.graphics.Color;\nimport android.graphics.Bitmap;\n');
 if (!src.includes('import android.webkit.WebResourceRequest;')) src = src.replace('import android.webkit.WebSettings;\n', 'import android.webkit.WebSettings;\nimport android.webkit.WebResourceRequest;\n');
 if (!src.includes('import com.getcapacitor.Bridge;')) src = src.replace('import com.getcapacitor.BridgeActivity;\n', 'import com.getcapacitor.BridgeActivity;\nimport com.getcapacitor.Bridge;\nimport com.getcapacitor.BridgeWebViewClient;\n');
 
@@ -53,9 +56,16 @@ const method = `
     Bridge bridge = getBridge();
     webView.setWebViewClient(new BridgeWebViewClient(bridge) {
       @Override
+      public void onPageStarted(WebView view, String url, Bitmap favicon) {
+        super.onPageStarted(view, url, favicon);
+        ${lifecycleUi ? 'setAppForgeLoading(true);' : ''}
+      }
+
+      @Override
       public void onPageFinished(WebView view, String url) {
         super.onPageFinished(view, url);
         injectAppForgeOverrides(view, url);
+        ${lifecycleUi ? 'setAppForgeLoading(false);' : ''}
       }
 
       @Override
@@ -89,4 +99,4 @@ if (src.includes('      applyAppForgeRuntime(webView);\n')) {
   throw new Error('AppForge runtime call not found for WebView client install');
 }
 fs.writeFileSync(file, src);
-console.log(`[AppForge] WebView runtime active: externalMode=${externalMode}, css=${css64.length > 0}, js=${js64.length > 0}`);
+console.log(`[AppForge] WebView runtime: externalMode=${externalMode}, css=${css64.length > 0}, js=${js64.length > 0}, lifecycleUI=${lifecycleUi}`);
