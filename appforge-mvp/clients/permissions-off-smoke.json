@@ -1,0 +1,88 @@
+{
+  "appId": "ai.gaotus.appforge.permissionsoff",
+  "appName": "AppForge Permissions Off Smoke",
+  "mode": "remote",
+  "url": "https://example.com/",
+  "themeColor": "#111827",
+  "accentColor": "#fbbf24",
+  "versionName": "0.4.0",
+  "versionCode": 4,
+  "features": {
+    "share": false,
+    "haptics": false,
+    "openExternal": false,
+    "deviceInfo": true,
+    "camera": false,
+    "location": false
+  },
+  "permissions": {
+    "camera": false,
+    "location": false,
+    "microphone": false,
+    "storage": false,
+    "vibration": false,
+    "play_services": false
+  },
+  "appSettings": {
+    "status_bar_color": "#111827",
+    "navigation_bar_color": "#111827",
+    "orientation": "portrait",
+    "fullscreen": false,
+    "pinch_zoom": false,
+    "disable_cache": false,
+    "kiosk_mode": false,
+    "scroll_bounce": false,
+    "pull_to_refresh": false,
+    "page_loader": false,
+    "confirm_exit": true
+  },
+  "linkHandling": {
+    "external_mode": "external",
+    "allow_subdomains": true,
+    "allow_http": false,
+    "deep_linking": false,
+    "custom_scheme": ""
+  },
+  "overrides": {
+    "custom_css": "",
+    "custom_js": "",
+    "user_agent": "",
+    "custom_headers": "",
+    "cookie_persistence": true
+  },
+  "uiNavigation": {
+    "header_enabled": false,
+    "header_title": "",
+    "header_background": "#111827",
+    "header_text": "#ffffff",
+    "bottom_nav_enabled": false,
+    "bottom_nav_items": [],
+    "floating_button_enabled": false,
+    "floating_button_label": "",
+    "floating_button_url": ""
+  },
+  "notifications": {
+    "provider": "none",
+    "ask_permission_on_launch": false,
+    "disable_foreground": false,
+    "notification_icon_url": "",
+    "firebase_project_id": "",
+    "onesignal_app_id": ""
+  },
+  "security": {
+    "prevent_screenshots": false,
+    "biometric_lock": false
+  },
+  "communication": {
+    "native_share": false,
+    "external_phone_email": false
+  },
+  "deviceHardware": {
+    "keep_screen_on": false
+  },
+  "localisation": {
+    "language": "en",
+    "rtl": false
+  },
+  "environment": []
+}
