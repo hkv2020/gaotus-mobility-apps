@@ -65,6 +65,16 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
+      - name: Generate custom icon and splash
+        run: |
+          if node -e "const c=require('./generated-client.json'); process.exit(c.iconUrl ? 0 : 1)"; then
+            npm install --no-save --no-audit --no-fund @capacitor/assets@3.0.5 sharp
+            node scripts/prepare-branding.mjs
+            npx capacitor-assets generate --android
+          else
+            echo "[AppForge] no custom icon selected; using master Android assets"
+          fi
+
       - name: Sync and patch native shell
         run: npx cap sync android && node scripts/patch-native.mjs android && node scripts/patch-android-back.mjs
 
