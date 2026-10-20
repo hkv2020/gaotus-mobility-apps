@@ -12,8 +12,13 @@ function walk(dir, out = []) {
   return out;
 }
 
-const oldGlyph = (key) => ({home:'⌂',search:'⌕',user:'●',account:'●',cart:'▣',phone:'☎',info:'ⓘ',settings:'⚙',link:'↗',menu:'☰',heart:'♥',bell:'●',mail:'✉',chat:'✦',more:'⋯'}[String(key || '').toLowerCase()] || '•');
-const betterGlyph = (key) => ({home:'⌂',search:'⌕',user:'👤',account:'👤',cart:'🛒',phone:'☎',info:'ⓘ',settings:'⚙',link:'↗',menu:'☰',heart:'♥',bell:'🔔',mail:'✉',chat:'💬',more:'⋯'}[String(key || '').toLowerCase()] || '•');
+const oldGlyph = (key) => ({
+  home:'⌂',search:'⌕',user:'●',account:'●',cart:'▣',phone:'☎',info:'ⓘ',settings:'⚙',link:'↗',menu:'☰',heart:'♥',bell:'●',mail:'✉',chat:'✦',more:'⋯'
+}[String(key || '').toLowerCase()] || '•');
+const betterGlyph = (key) => ({
+  home:'⌂',search:'⌕',user:'👤',account:'👤',cart:'🛒',phone:'☎',info:'ⓘ',settings:'⚙',link:'↗',menu:'☰',heart:'♥',bell:'🔔',mail:'✉',chat:'💬',more:'⋯',
+  calendar:'📅',map:'🗺',globe:'🌐',download:'⬇',upload:'⬆',camera:'📷',location:'📍',share:'↗',star:'★',refresh:'↻',help:'?'
+}[String(key || '').toLowerCase()] || '•');
 
 const files = walk(path.join(rootDir, 'android', 'app', 'src', 'main', 'java'));
 if (files.length !== 1) throw new Error(`Expected one MainActivity.java, found ${files.length}`);
