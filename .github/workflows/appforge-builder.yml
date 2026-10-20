@@ -44,11 +44,12 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Verify Android SDK
+      - name: Verify Android SDK environment
         run: |
+          test -n "$ANDROID_HOME"
+          test -d "$ANDROID_HOME"
           echo "ANDROID_HOME=$ANDROID_HOME"
-          command -v sdkmanager >/dev/null
-          sdkmanager --version
+          if command -v sdkmanager >/dev/null 2>&1; then sdkmanager --version; else echo "sdkmanager is not on PATH; Gradle will use ANDROID_HOME"; fi
 
       - name: Install factory dependencies
         run: npm install --no-audit --no-fund
@@ -107,6 +108,8 @@ jobs:
           test -s android/app/build/outputs/bundle/release/app-release.aab
           unzip -tqq android/app/build/outputs/apk/debug/app-debug.apk
           unzip -tqq android/app/build/outputs/bundle/release/app-release.aab
+          test -s runtime-verification.json
+          test -s generated-feature-plan.json
           echo "[AppForge] APK/AAB integrity PASS"
 
       - name: Prepare verified outputs
