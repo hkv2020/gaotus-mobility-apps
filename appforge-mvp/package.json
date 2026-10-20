@@ -1,8 +1,8 @@
 {
   "name": "gaotus-appforge-mvp",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
-  "description": "Gaotus AppForge master wrapper and verified Android build factory",
+  "description": "Gaotus AppForge master wrapper and verified Android build factory with Navigation Studio",
   "type": "module",
   "scripts": {
     "generate": "node scripts/generate-client.mjs clients/demo.json",
