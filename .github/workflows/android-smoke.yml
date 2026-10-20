@@ -26,10 +26,12 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - name: Verify Android SDK
+      - name: Verify Android SDK environment
         run: |
-          command -v sdkmanager >/dev/null
-          sdkmanager --version
+          test -n "$ANDROID_HOME"
+          test -d "$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          if command -v sdkmanager >/dev/null 2>&1; then sdkmanager --version; else echo "sdkmanager is not on PATH; Gradle will use ANDROID_HOME"; fi
       - name: Install factory dependencies
         run: npm install --no-audit --no-fund
       - name: Run factory contract tests
