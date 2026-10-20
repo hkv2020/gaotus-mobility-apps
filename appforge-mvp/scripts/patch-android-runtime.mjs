@@ -8,6 +8,7 @@ const steps = [
   ['apply-origin-policy.mjs'],
   ['patch-android-back.mjs'],
   ['patch-android-ui.mjs'],
+  ['patch-android-icon-glyphs.mjs'],
   ['patch-android-webview.mjs'],
   ['patch-android-notifications.mjs'],
   ['patch-android-security.mjs'],
