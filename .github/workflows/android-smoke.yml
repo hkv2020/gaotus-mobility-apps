@@ -71,6 +71,6 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
       - name: Apply advanced native runtime
-        run: npx cap sync android && node scripts/patch-native.mjs android && node scripts/patch-android-back.mjs && node scripts/patch-android-ui.mjs && node scripts/patch-android-webview.mjs && node scripts/patch-android-notifications.mjs
-      - name: Build advanced UI + push APK
+        run: npx cap sync android && node scripts/patch-native.mjs android && node scripts/patch-android-back.mjs && node scripts/patch-android-ui.mjs && node scripts/patch-android-webview.mjs && node scripts/patch-android-notifications.mjs && node scripts/patch-android-security.mjs
+      - name: Build advanced UI + push + security APK
         run: cd android && ./gradlew assembleDebug --no-daemon
