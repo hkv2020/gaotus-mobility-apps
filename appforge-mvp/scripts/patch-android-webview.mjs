@@ -17,6 +17,8 @@ const links = client.linkHandling || {};
 const overrides = client.overrides || {};
 const appSettings = client.appSettings || {};
 const communication = client.communication || {};
+const localisation = client.localisation || {};
+const environment = Array.isArray(client.environment) ? client.environment : [];
 const files = walk(path.join(rootDir, 'android', 'app', 'src', 'main', 'java'));
 if (files.length !== 1) throw new Error(`Expected one MainActivity.java, found ${files.length}`);
 const file = files[0];
@@ -28,6 +30,15 @@ const externalCommunication = communication.external_phone_email !== false;
 const lifecycleUi = appSettings.page_loader === true || appSettings.pull_to_refresh === true;
 const css64 = Buffer.from(String(overrides.custom_css || ''), 'utf8').toString('base64');
 const js64 = Buffer.from(String(overrides.custom_js || ''), 'utf8').toString('base64');
+const envObject = {};
+for (const row of environment) {
+  if (!row || typeof row !== 'object') continue;
+  const key = String(row.key || '').replace(/[^A-Za-z0-9_]/g, '').toUpperCase();
+  if (key) envObject[key] = String(row.value ?? '');
+}
+const env64 = Buffer.from(JSON.stringify(envObject), 'utf8').toString('base64');
+const lang = String(localisation.language || 'en').replace(/[^A-Za-z_-]/g, '') || 'en';
+const rtl = localisation.rtl === true;
 
 if (!src.includes('import android.content.Intent;')) src = src.replace('import android.app.AlertDialog;\n', 'import android.app.AlertDialog;\nimport android.content.Intent;\n');
 if (!src.includes('import android.graphics.Bitmap;')) src = src.replace('import android.graphics.Color;\n', 'import android.graphics.Color;\nimport android.graphics.Bitmap;\n');
@@ -54,6 +65,8 @@ const method = `
       String host = Uri.parse(url == null ? "" : url).getHost();
       if (!appForgeInternalHost(host)) return;
       String script = "(function(){try{" +
+        "var e=JSON.parse(atob('${env64}'));window.GaotusEnv=Object.freeze(e);" +
+        "document.documentElement.lang='${lang}';document.documentElement.dir='${rtl ? 'rtl' : 'ltr'}';" +
         "var c=atob('${css64}');if(c){var s=document.getElementById('gaotus-appforge-css');if(!s){s=document.createElement('style');s.id='gaotus-appforge-css';document.head.appendChild(s);}s.textContent=c;}" +
         "var j=atob('${js64}');if(j){(0,eval)(j);}" +
         "}catch(e){console.warn('AppForge override',e);}})();";
@@ -109,4 +122,4 @@ if (src.includes('      applyAppForgeRuntime(webView);\n')) {
   throw new Error('AppForge runtime call not found for WebView client install');
 }
 fs.writeFileSync(file, src);
-console.log(`[AppForge] WebView runtime: externalMode=${externalMode}, communication=${externalCommunication}, css=${css64.length > 0}, js=${js64.length > 0}, lifecycleUI=${lifecycleUi}`);
+console.log(`[AppForge] WebView runtime: externalMode=${externalMode}, communication=${externalCommunication}, env=${Object.keys(envObject).length}, lang=${lang}, rtl=${rtl}, css=${css64.length > 0}, js=${js64.length > 0}, lifecycleUI=${lifecycleUi}`);
