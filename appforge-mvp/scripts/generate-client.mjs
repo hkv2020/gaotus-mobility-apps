@@ -1,9 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { rootDir, readJSON, validateClient, resolveEnvironmentTokens, featurePlan, capacitorConfigObject, tsConfigSource } from './lib.mjs';
+import { normalizeBuilderInput } from './normalize-builder-input.mjs';
 
 const file = path.resolve(rootDir, process.argv[2] || 'clients/demo.json');
-const raw = validateClient(readJSON(file));
+const input = normalizeBuilderInput(readJSON(file));
+const raw = validateClient(input);
 const client = resolveEnvironmentTokens(raw);
 validateClient({ ...client, environment: (client.environment || []).filter((row) => row.key !== 'BASE_URL') });
 const plan = featurePlan(client);
