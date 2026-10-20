@@ -21,7 +21,7 @@
     "microphone": false,
     "storage": false,
     "vibration": true,
-    "play_services": false
+    "play_services": true
   },
   "appSettings": {
     "status_bar_color": "#111827",
@@ -42,8 +42,8 @@
     "custom_scheme": "appforge"
   },
   "overrides": {
-    "custom_css": "",
-    "custom_js": "",
+    "custom_css": "body{outline:0}",
+    "custom_js": "window.__APPFORGE_SMOKE__=true;",
     "user_agent": "GaotusAppForge/0.3",
     "custom_headers": "X-AppForge-Smoke: yes",
     "cookie_persistence": true
@@ -58,5 +58,14 @@
       {"label":"Home","url":"/","icon":"home"},
       {"label":"About","url":"/about","icon":"info"}
     ]
-  }
+  },
+  "notifications": {
+    "provider": "onesignal",
+    "ask_permission_on_launch": true,
+    "disable_foreground": false,
+    "notification_icon_url": "",
+    "firebase_project_id": "gaotus-appforge-smoke",
+    "onesignal_app_id": "11111111-2222-3333-4444-555555555555"
+  },
+  "firebaseGoogleServicesB64": "eyJwcm9qZWN0X2luZm8iOnsicHJvamVjdF9udW1iZXIiOiIxMjM0NTY3ODkwMTIiLCJwcm9qZWN0X2lkIjoiZ2FvdHVzLWFwcGZvcmdlLXNtb2tlIiwic3RvcmFnZV9idWNrZXQiOiJnYW90dXMtYXBwZm9yZ2Utc21va2UuYXBwc3BvdC5jb20ifSwiY2xpZW50IjpbeyJjbGllbnRfaW5mbyI6eyJtb2JpbGVzZGtfYXBwX2lkIjoiMToxMjM0NTY3ODkwMTI6YW5kcm9pZDphYmNkZWYxMjM0NTY3ODkwIiwiYW5kcm9pZF9jbGllbnRfaW5mbyI6eyJwYWNrYWdlX25hbWUiOiJhaS5nYW90dXMuYXBwZm9yZ2UudWl0ZXN0In19LCJvYXV0aF9jbGllbnQiOltdLCJhcGlfa2V5IjpbeyJjdXJyZW50X2tleSI6IkFJemFTeURVTU1ZS0VZRk9SQ09NUElMRU9OTFkxMjM0NTY3ODkifV0sInNlcnZpY2VzIjp7ImFwcGludml0ZV9zZXJ2aWNlIjp7Im90aGVyX3BsYXRmb3JtX29hdXRoX2NsaWVudCI6W119fX1dLCJjb25maWd1cmF0aW9uX3ZlcnNpb24iOiIxIn0="
 }
