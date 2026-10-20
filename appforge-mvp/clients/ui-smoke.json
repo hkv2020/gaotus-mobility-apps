@@ -1,26 +1,14 @@
 {
-  "appId": "ai.gaotus.appforge.uitest",
-  "appName": "AppForge UI Smoke",
-  "mode": "remote",
-  "url": "https://example.com/",
-  "themeColor": "#111827",
-  "accentColor": "#fbbf24",
-  "versionName": "0.3.0",
-  "versionCode": 3,
-  "features": {"share":true,"haptics":true,"openExternal":true,"deviceInfo":true,"camera":false,"location":false},
-  "permissions": {"camera":false,"location":false,"microphone":false,"storage":false,"vibration":true,"play_services":true},
-  "appSettings": {
-    "status_bar_color":"#111827","navigation_bar_color":"#111827","orientation":"portrait","fullscreen":false,
-    "pinch_zoom":true,"disable_cache":false,"kiosk_mode":false,"scroll_bounce":true,"pull_to_refresh":true,"page_loader":true,"confirm_exit":true
-  },
-  "linkHandling": {"external_mode":"external","allow_subdomains":true,"allow_http":false,"deep_linking":true,"custom_scheme":"appforge"},
-  "overrides": {"custom_css":"body{outline:0}","custom_js":"window.__APPFORGE_SMOKE__=true;","user_agent":"GaotusAppForge/0.3","custom_headers":"X-AppForge-Smoke: yes","cookie_persistence":true},
-  "uiNavigation": {
-    "header_enabled":true,"header_title":"AppForge UI","header_background":"#111827","header_text":"#ffffff",
-    "bottom_nav_enabled":true,
-    "bottom_nav_items":[{"label":"Home","url":"/","icon":"home"},{"label":"About","url":"/about","icon":"info"}],
-    "floating_button_enabled":true,"floating_button_label":"Contact","floating_button_url":"/contact"
-  },
-  "notifications": {"provider":"onesignal","ask_permission_on_launch":true,"disable_foreground":false,"notification_icon_url":"","firebase_project_id":"gaotus-appforge-smoke","onesignal_app_id":"11111111-2222-3333-4444-555555555555"},
-  "firebaseGoogleServicesB64": "eyJwcm9qZWN0X2luZm8iOnsicHJvamVjdF9udW1iZXIiOiIxMjM0NTY3ODkwMTIiLCJwcm9qZWN0X2lkIjoiZ2FvdHVzLWFwcGZvcmdlLXNtb2tlIiwic3RvcmFnZV9idWNrZXQiOiJnYW90dXMtYXBwZm9yZ2Utc21va2UuYXBwc3BvdC5jb20ifSwiY2xpZW50IjpbeyJjbGllbnRfaW5mbyI6eyJtb2JpbGVzZGtfYXBwX2lkIjoiMToxMjM0NTY3ODkwMTI6YW5kcm9pZDphYmNkZWYxMjM0NTY3ODkwIiwiYW5kcm9pZF9jbGllbnRfaW5mbyI6eyJwYWNrYWdlX25hbWUiOiJhaS5nYW90dXMuYXBwZm9yZ2UudWl0ZXN0In19LCJvYXV0aF9jbGllbnQiOltdLCJhcGlfa2V5IjpbeyJjdXJyZW50X2tleSI6IkFJemFTeURVTU1ZS0VZRk9SQ09NUElMRU9OTFkxMjM0NTY3ODkifV0sInNlcnZpY2VzIjp7ImFwcGludml0ZV9zZXJ2aWNlIjp7Im90aGVyX3BsYXRmb3JtX29hdXRoX2NsaWVudCI6W119fX1dLCJjb25maWd1cmF0aW9uX3ZlcnNpb24iOiIxIn0="
+  "appId":"ai.gaotus.appforge.uitest","appName":"AppForge UI Smoke","mode":"remote","url":"https://example.com/","themeColor":"#111827","accentColor":"#fbbf24","versionName":"0.3.0","versionCode":3,
+  "features":{"share":true,"haptics":true,"openExternal":true,"deviceInfo":true,"camera":false,"location":false},
+  "permissions":{"camera":false,"location":false,"microphone":false,"storage":false,"vibration":true,"play_services":true},
+  "appSettings":{"status_bar_color":"#111827","navigation_bar_color":"#111827","orientation":"portrait","fullscreen":false,"pinch_zoom":true,"disable_cache":false,"kiosk_mode":false,"scroll_bounce":true,"pull_to_refresh":true,"page_loader":true,"confirm_exit":true},
+  "linkHandling":{"external_mode":"external","allow_subdomains":true,"allow_http":false,"deep_linking":true,"custom_scheme":"appforge"},
+  "overrides":{"custom_css":"body{outline:0}","custom_js":"window.__APPFORGE_SMOKE__=true;","user_agent":"GaotusAppForge/0.3","custom_headers":"X-AppForge-Smoke: yes","cookie_persistence":true},
+  "uiNavigation":{"header_enabled":true,"header_title":"AppForge UI","header_background":"#111827","header_text":"#ffffff","bottom_nav_enabled":true,"bottom_nav_items":[{"label":"Home","url":"/","icon":"home"},{"label":"About","url":"/about","icon":"info"}],"floating_button_enabled":true,"floating_button_label":"Contact","floating_button_url":"/contact"},
+  "notifications":{"provider":"onesignal","ask_permission_on_launch":true,"disable_foreground":false,"notification_icon_url":"","firebase_project_id":"gaotus-appforge-smoke","onesignal_app_id":"11111111-2222-3333-4444-555555555555"},
+  "security":{"prevent_screenshots":true,"biometric_lock":true},
+  "communication":{"native_share":true,"external_phone_email":true},
+  "deviceHardware":{"keep_screen_on":true},
+  "firebaseGoogleServicesB64":"eyJwcm9qZWN0X2luZm8iOnsicHJvamVjdF9udW1iZXIiOiIxMjM0NTY3ODkwMTIiLCJwcm9qZWN0X2lkIjoiZ2FvdHVzLWFwcGZvcmdlLXNtb2tlIiwic3RvcmFnZV9idWNrZXQiOiJnYW90dXMtYXBwZm9yZ2Utc21va2UuYXBwc3BvdC5jb20ifSwiY2xpZW50IjpbeyJjbGllbnRfaW5mbyI6eyJtb2JpbGVzZGtfYXBwX2lkIjoiMToxMjM0NTY3ODkwMTI6YW5kcm9pZDphYmNkZWYxMjM0NTY3ODkwIiwiYW5kcm9pZF9jbGllbnRfaW5mbyI6eyJwYWNrYWdlX25hbWUiOiJhaS5nYW90dXMuYXBwZm9yZ2UudWl0ZXN0In19LCJvYXV0aF9jbGllbnQiOltdLCJhcGlfa2V5IjpbeyJjdXJyZW50X2tleSI6IkFJemFTeURVTU1ZS0VZRk9SQ09NUElMRU9OTFkxMjM0NTY3ODkifV0sInNlcnZpY2VzIjp7ImFwcGludml0ZV9zZXJ2aWNlIjp7Im90aGVyX3BsYXRmb3JtX29hdXRoX2NsaWVudCI6W119fX1dLCJjb25maWd1cmF0aW9uX3ZlcnNpb24iOiIxIn0="
 }
