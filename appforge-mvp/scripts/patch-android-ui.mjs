@@ -39,7 +39,11 @@ const floatingUrl = String(ui.floating_button_url || '');
 const items = Array.isArray(ui.bottom_nav_items) ? ui.bottom_nav_items.slice(0, 5) : [];
 
 if (!src.includes('import android.view.ViewGroup;')) {
-  src = src.replace('import android.view.View;\n', 'import android.view.View;\nimport android.view.ViewGroup;\nimport android.view.Gravity;\nimport android.widget.LinearLayout;\nimport android.widget.FrameLayout;\nimport android.widget.TextView;\nimport android.widget.Button;\nimport android.widget.ProgressBar;\nimport androidx.swiperefreshlayout.widget.SwipeRefreshLayout;\n');
+  const swipeImport = pullRefresh ? 'import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;\n' : '';
+  src = src.replace(
+    'import android.view.View;\n',
+    `import android.view.View;\nimport android.view.ViewGroup;\nimport android.view.Gravity;\nimport android.widget.LinearLayout;\nimport android.widget.FrameLayout;\nimport android.widget.TextView;\nimport android.widget.Button;\nimport android.widget.ProgressBar;\n${swipeImport}`
+  );
 }
 
 const gradlePath = path.join(rootDir, 'android', 'app', 'build.gradle');
@@ -65,9 +69,11 @@ const itemBuilders = items.map((item, index) => {
     bottom.addView(nav${index}, new LinearLayout.LayoutParams(0, dp(58), 1f));`;
 }).join('\n');
 
+const swipeField = pullRefresh ? '  private SwipeRefreshLayout appForgeRefreshLayout;\n' : '';
+const refreshStop = pullRefresh ? '    if (!loading && appForgeRefreshLayout != null) appForgeRefreshLayout.setRefreshing(false);\n' : '';
+
 const method = `
-  private SwipeRefreshLayout appForgeRefreshLayout;
-  private ProgressBar appForgePageLoader;
+${swipeField}  private ProgressBar appForgePageLoader;
 
   private int dp(int value) {
     return Math.round(value * getResources().getDisplayMetrics().density);
@@ -85,8 +91,7 @@ const method = `
 
   public void setAppForgeLoading(boolean loading) {
     if (appForgePageLoader != null) appForgePageLoader.setVisibility(loading ? View.VISIBLE : View.GONE);
-    if (!loading && appForgeRefreshLayout != null) appForgeRefreshLayout.setRefreshing(false);
-  }
+${refreshStop}  }
 
   private void applyNativeChrome(WebView webView) {
     if (webView == null) return;
