@@ -16,6 +16,7 @@ const client = validateClient(readJSON(path.join(rootDir, 'generated-client.json
 const links = client.linkHandling || {};
 const overrides = client.overrides || {};
 const appSettings = client.appSettings || {};
+const communication = client.communication || {};
 const files = walk(path.join(rootDir, 'android', 'app', 'src', 'main', 'java'));
 if (files.length !== 1) throw new Error(`Expected one MainActivity.java, found ${files.length}`);
 const file = files[0];
@@ -23,6 +24,7 @@ let src = fs.readFileSync(file, 'utf8');
 
 const externalMode = links.external_mode === 'in_app' ? 'in_app' : 'external';
 const allowSubdomains = links.allow_subdomains !== false;
+const externalCommunication = communication.external_phone_email !== false;
 const lifecycleUi = appSettings.page_loader === true || appSettings.pull_to_refresh === true;
 const css64 = Buffer.from(String(overrides.custom_css || ''), 'utf8').toString('base64');
 const js64 = Buffer.from(String(overrides.custom_js || ''), 'utf8').toString('base64');
@@ -37,6 +39,14 @@ const method = `
     if (host == null || APPFORGE_START_HOST == null || APPFORGE_START_HOST.isEmpty()) return false;
     if (host.equalsIgnoreCase(APPFORGE_START_HOST)) return true;
     return ${allowSubdomains ? 'host.toLowerCase().endsWith("." + APPFORGE_START_HOST.toLowerCase())' : 'false'};
+  }
+
+  private boolean openAppForgeExternalIntent(Uri uri) {
+    if (uri == null) return false;
+    try {
+      startActivity(new Intent(Intent.ACTION_VIEW, uri));
+      return true;
+    } catch (Exception ignored) { return true; }
   }
 
   private void injectAppForgeOverrides(WebView view, String url) {
@@ -73,16 +83,16 @@ const method = `
         Uri uri = request.getUrl();
         String scheme = uri != null ? uri.getScheme() : null;
         String host = uri != null ? uri.getHost() : null;
+        ${externalCommunication ? `if (scheme != null && (scheme.equalsIgnoreCase("tel") || scheme.equalsIgnoreCase("mailto") || scheme.equalsIgnoreCase("sms") || scheme.equalsIgnoreCase("smsto") || scheme.equalsIgnoreCase("geo") || scheme.equalsIgnoreCase("market") || scheme.equalsIgnoreCase("whatsapp"))) {
+          return openAppForgeExternalIntent(uri);
+        }` : ''}
         boolean web = "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
         if (web && !appForgeInternalHost(host)) {
           if (${JSON.stringify(externalMode)}.equals("in_app")) {
             view.loadUrl(uri.toString());
             return true;
           }
-          try {
-            startActivity(new Intent(Intent.ACTION_VIEW, uri));
-            return true;
-          } catch (Exception ignored) { return true; }
+          return openAppForgeExternalIntent(uri);
         }
         return super.shouldOverrideUrlLoading(view, request);
       }
@@ -99,4 +109,4 @@ if (src.includes('      applyAppForgeRuntime(webView);\n')) {
   throw new Error('AppForge runtime call not found for WebView client install');
 }
 fs.writeFileSync(file, src);
-console.log(`[AppForge] WebView runtime: externalMode=${externalMode}, css=${css64.length > 0}, js=${js64.length > 0}, lifecycleUI=${lifecycleUi}`);
+console.log(`[AppForge] WebView runtime: externalMode=${externalMode}, communication=${externalCommunication}, css=${css64.length > 0}, js=${js64.length > 0}, lifecycleUI=${lifecycleUi}`);
