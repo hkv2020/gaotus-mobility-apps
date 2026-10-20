@@ -58,14 +58,21 @@ jobs:
           unzip -tqq android/app/build/outputs/bundle/release/app-release.aab
           test -s runtime-verification.json
           test -s generated-feature-plan.json
+      - name: Package verified smoke output
+        run: node scripts/package-verified-build.mjs smoke-v040
+      - name: Verify packaged build contract
+        run: |
+          test -s dist/smoke-v040.apk
+          test -s dist/smoke-v040.aab
+          test -s dist/smoke-v040-verification.json
+          test -s dist/smoke-v040-feature-plan.json
+          test -s dist/smoke-v040-build-report.json
+          test -s dist/smoke-v040-config.json
+          test -s dist/smoke-v040-SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: gaotus-appforge-android-smoke
-          path: |
-            appforge-mvp/android/app/build/outputs/apk/debug/app-debug.apk
-            appforge-mvp/android/app/build/outputs/bundle/release/app-release.aab
-            appforge-mvp/runtime-verification.json
-            appforge-mvp/generated-feature-plan.json
+          path: appforge-mvp/dist/
           if-no-files-found: error
 
   feature-matrix:
