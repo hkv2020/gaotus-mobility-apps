@@ -1,0 +1,18 @@
+{
+  "appId": "ai.gaotus.appforge.remoteexample",
+  "appName": "Remote Website Demo",
+  "mode": "remote",
+  "url": "https://example.com",
+  "themeColor": "#0f172a",
+  "accentColor": "#38bdf8",
+  "versionName": "0.1.0",
+  "versionCode": 1,
+  "features": {
+    "share": true,
+    "haptics": true,
+    "openExternal": true,
+    "deviceInfo": true,
+    "camera": true,
+    "location": true
+  }
+}

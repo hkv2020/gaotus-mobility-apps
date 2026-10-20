@@ -1,0 +1,18 @@
+{
+  "appId": "ai.gaotus.appforge.demo",
+  "appName": "Gaotus AppForge Demo",
+  "mode": "local",
+  "url": null,
+  "themeColor": "#111827",
+  "accentColor": "#fbbf24",
+  "versionName": "0.1.0",
+  "versionCode": 1,
+  "features": {
+    "share": true,
+    "haptics": true,
+    "openExternal": true,
+    "deviceInfo": true,
+    "camera": true,
+    "location": true
+  }
+}
