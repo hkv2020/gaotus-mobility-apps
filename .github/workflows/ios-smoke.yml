@@ -1,11 +1,16 @@
-name: AppForge iOS Simulator Smoke Build
+name: AppForge iOS Simulator Smoke
 
 on:
   workflow_dispatch:
   push:
     branches: ["appforge-mvp"]
     paths:
-      - "appforge-mvp/**"
+      - "appforge-mvp/scripts/patch-ios-runtime.mjs"
+      - "appforge-mvp/scripts/verify-ios-runtime.mjs"
+      - "appforge-mvp/scripts/package-ios-simulator.mjs"
+      - "appforge-mvp/scripts/patch-native.mjs"
+      - "appforge-mvp/scripts/lib.mjs"
+      - "appforge-mvp/clients/ui-smoke.json"
       - ".github/workflows/ios-smoke.yml"
 
 defaults:
@@ -15,7 +20,7 @@ defaults:
 jobs:
   ios-simulator:
     runs-on: macos-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,20 +28,39 @@ jobs:
           node-version: 22
       - name: Install JS dependencies
         run: npm install --no-audit --no-fund
-      - name: Run generator tests
+      - name: Run factory contract tests
         run: npm test
-      - name: Generate client config
-        run: npm run generate
+      - name: Generate iOS smoke config
+        run: node scripts/generate-client.mjs clients/ui-smoke.json
       - name: Add iOS platform
         run: npx cap add ios
-      - name: Sync and patch native shell
-        run: npx cap sync ios && node scripts/patch-native.mjs ios
-      - name: Compile simulator app without signing
+      - name: Sync iOS shell
+        run: npx cap sync ios
+      - name: Apply native bridge
+        run: node scripts/patch-native.mjs ios
+      - name: Apply canonical iOS runtime
+        run: node scripts/patch-ios-runtime.mjs
+      - name: Verify iOS runtime
+        run: node scripts/verify-ios-runtime.mjs
+      - name: Build simulator app without signing
         run: |
           cd ios/App
           if [ -f Podfile ]; then
             pod install
-            xcodebuild -workspace App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+            xcodebuild -workspace App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath ../../build/ios-sim CODE_SIGNING_ALLOWED=NO build
           else
-            xcodebuild -project App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+            xcodebuild -project App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath ../../build/ios-sim CODE_SIGNING_ALLOWED=NO build
           fi
+      - name: Verify compiled simulator bundle
+        run: |
+          test -d build/ios-sim/Build/Products/Debug-iphonesimulator/App.app
+          test -s ios-runtime-verification.json
+          plutil -lint ios/App/App/Info.plist
+      - name: Package simulator test output
+        run: node scripts/package-ios-simulator.mjs ios-smoke build/ios-sim/Build/Products/Debug-iphonesimulator/App.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gaotus-appforge-ios-smoke
+          path: appforge-mvp/dist-ios/
+          if-no-files-found: error
+          retention-days: 7
