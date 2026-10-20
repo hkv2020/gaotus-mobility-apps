@@ -11,6 +11,7 @@ const steps = [
   ['patch-android-webview.mjs'],
   ['patch-android-notifications.mjs'],
   ['patch-android-security.mjs'],
+  ['reconcile-android-generated.mjs'],
   ['verify-android-runtime.mjs'],
 ];
 
