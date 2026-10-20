@@ -14,10 +14,14 @@ function walk(dir, out = []) {
 
 const client = validateClient(readJSON(path.join(rootDir, 'generated-client.json')));
 const ui = client.uiNavigation || {};
+const appSettings = client.appSettings || {};
 const headerEnabled = ui.header_enabled === true;
 const bottomEnabled = ui.bottom_nav_enabled === true;
-if (!headerEnabled && !bottomEnabled) {
-  console.log('[AppForge] native UI chrome disabled; no Android UI patch required');
+const floatingEnabled = ui.floating_button_enabled === true && String(ui.floating_button_url || '').trim() !== '';
+const pullRefresh = appSettings.pull_to_refresh === true;
+const pageLoader = appSettings.page_loader !== false;
+if (!headerEnabled && !bottomEnabled && !floatingEnabled && !pullRefresh && !pageLoader) {
+  console.log('[AppForge] native UI extras disabled; no Android UI patch required');
   process.exit(0);
 }
 
@@ -30,11 +34,22 @@ const color = (v, fallback) => /^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? Strin
 const headerTitle = String(ui.header_title || client.appName || 'App');
 const headerBg = color(ui.header_background, '#111827');
 const headerText = color(ui.header_text, '#ffffff');
+const floatingLabel = String(ui.floating_button_label || 'Open');
+const floatingUrl = String(ui.floating_button_url || '');
 const items = Array.isArray(ui.bottom_nav_items) ? ui.bottom_nav_items.slice(0, 5) : [];
-const startUrl = client.mode === 'remote' ? String(client.url) : '';
 
 if (!src.includes('import android.view.ViewGroup;')) {
-  src = src.replace('import android.view.View;\n', 'import android.view.View;\nimport android.view.ViewGroup;\nimport android.view.Gravity;\nimport android.widget.LinearLayout;\nimport android.widget.TextView;\n');
+  src = src.replace('import android.view.View;\n', 'import android.view.View;\nimport android.view.ViewGroup;\nimport android.view.Gravity;\nimport android.widget.LinearLayout;\nimport android.widget.FrameLayout;\nimport android.widget.TextView;\nimport android.widget.Button;\nimport android.widget.ProgressBar;\nimport androidx.swiperefreshlayout.widget.SwipeRefreshLayout;\n');
+}
+
+// SwipeRefreshLayout is a separate AndroidX artifact.
+const gradlePath = path.join(rootDir, 'android', 'app', 'build.gradle');
+let gradle = fs.readFileSync(gradlePath, 'utf8');
+if (pullRefresh && !gradle.includes('androidx.swiperefreshlayout:swiperefreshlayout')) {
+  const marker = `implementation project(':capacitor-cordova-android-plugins')`;
+  if (!gradle.includes(marker)) throw new Error('Capacitor app dependency marker missing for swipe refresh');
+  gradle = gradle.replace(marker, `${marker}\n    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'`);
+  fs.writeFileSync(gradlePath, gradle);
 }
 
 const itemBuilders = items.map((item, index) => {
@@ -52,6 +67,9 @@ const itemBuilders = items.map((item, index) => {
 }).join('\n');
 
 const method = `
+  private SwipeRefreshLayout appForgeRefreshLayout;
+  private ProgressBar appForgePageLoader;
+
   private int dp(int value) {
     return Math.round(value * getResources().getDisplayMetrics().density);
   }
@@ -64,6 +82,11 @@ const method = `
       String origin = base.getScheme() + "://" + base.getAuthority();
       return origin + (target.startsWith("/") ? target : "/" + target);
     } catch (Exception ignored) { return APPFORGE_START_URL; }
+  }
+
+  public void setAppForgeLoading(boolean loading) {
+    if (appForgePageLoader != null) appForgePageLoader.setVisibility(loading ? View.VISIBLE : View.GONE);
+    if (!loading && appForgeRefreshLayout != null) appForgeRefreshLayout.setRefreshing(false);
   }
 
   private void applyNativeChrome(WebView webView) {
@@ -87,7 +110,28 @@ const method = `
     header.setPadding(dp(18), 0, dp(18), 0);
     shell.addView(header, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(56)));` : ''}
 
-    shell.addView(webView, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+    FrameLayout body = new FrameLayout(this);
+    ${pullRefresh ? `appForgeRefreshLayout = new SwipeRefreshLayout(this);
+    appForgeRefreshLayout.addView(webView, new SwipeRefreshLayout.LayoutParams(SwipeRefreshLayout.LayoutParams.MATCH_PARENT, SwipeRefreshLayout.LayoutParams.MATCH_PARENT));
+    appForgeRefreshLayout.setOnRefreshListener(webView::reload);
+    body.addView(appForgeRefreshLayout, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));` : `body.addView(webView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));`}
+
+    ${pageLoader ? `appForgePageLoader = new ProgressBar(this);
+    FrameLayout.LayoutParams loaderParams = new FrameLayout.LayoutParams(dp(44), dp(44));
+    loaderParams.gravity = Gravity.CENTER;
+    body.addView(appForgePageLoader, loaderParams);` : ''}
+
+    ${floatingEnabled ? `Button floating = new Button(this);
+    floating.setText(${JSON.stringify(floatingLabel)});
+    floating.setTextColor(Color.WHITE);
+    floating.setBackgroundColor(Color.parseColor(${JSON.stringify(client.accentColor || '#fbbf24')}));
+    floating.setOnClickListener(v -> webView.loadUrl(resolveAppForgeTarget(${JSON.stringify(floatingUrl)})));
+    FrameLayout.LayoutParams floatParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, dp(52));
+    floatParams.gravity = Gravity.BOTTOM | Gravity.END;
+    floatParams.setMargins(dp(16), dp(16), dp(16), dp(16));
+    body.addView(floating, floatParams);` : ''}
+
+    shell.addView(body, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 
     ${bottomEnabled ? `LinearLayout bottom = new LinearLayout(this);
     bottom.setOrientation(LinearLayout.HORIZONTAL);
@@ -111,4 +155,4 @@ src = src.replace(marker, method + '\n' + marker);
 src = src.replace('      enforceConfiguredSite(webView);\n', '      enforceConfiguredSite(webView);\n      applyNativeChrome(webView);\n');
 
 fs.writeFileSync(file, src);
-console.log(`[AppForge] native Android UI chrome enabled: header=${headerEnabled}, bottomNav=${bottomEnabled}`);
+console.log(`[AppForge] native Android UI: header=${headerEnabled}, bottomNav=${bottomEnabled}, pullRefresh=${pullRefresh}, loader=${pageLoader}, floating=${floatingEnabled}`);
