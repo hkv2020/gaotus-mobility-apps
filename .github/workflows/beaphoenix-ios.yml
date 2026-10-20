@@ -1,0 +1,44 @@
+name: Beaphoenix AppForge iOS Simulator Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["appforge-mvp"]
+    paths:
+      - "appforge-mvp/clients/beaphoenix.json"
+      - "appforge-mvp/scripts/**"
+      - "appforge-mvp/www/**"
+      - ".github/workflows/beaphoenix-ios.yml"
+
+defaults:
+  run:
+    working-directory: appforge-mvp
+
+jobs:
+  ios-simulator:
+    runs-on: macos-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install JS dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run generator tests
+        run: npm test
+      - name: Generate Beaphoenix client config
+        run: node scripts/generate-client.mjs clients/beaphoenix.json
+      - name: Add iOS platform
+        run: npx cap add ios
+      - name: Sync and patch native shell
+        run: npx cap sync ios && node scripts/patch-native.mjs ios
+      - name: Compile Beaphoenix simulator app without signing
+        run: |
+          cd ios/App
+          if [ -f Podfile ]; then
+            pod install
+            xcodebuild -workspace App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+          else
+            xcodebuild -project App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+          fi
