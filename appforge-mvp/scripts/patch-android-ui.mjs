@@ -19,7 +19,7 @@ const headerEnabled = ui.header_enabled === true;
 const bottomEnabled = ui.bottom_nav_enabled === true;
 const floatingEnabled = ui.floating_button_enabled === true && String(ui.floating_button_url || '').trim() !== '';
 const pullRefresh = appSettings.pull_to_refresh === true;
-const pageLoader = appSettings.page_loader !== false;
+const pageLoader = appSettings.page_loader === true;
 if (!headerEnabled && !bottomEnabled && !floatingEnabled && !pullRefresh && !pageLoader) {
   console.log('[AppForge] native UI extras disabled; no Android UI patch required');
   process.exit(0);
@@ -42,7 +42,6 @@ if (!src.includes('import android.view.ViewGroup;')) {
   src = src.replace('import android.view.View;\n', 'import android.view.View;\nimport android.view.ViewGroup;\nimport android.view.Gravity;\nimport android.widget.LinearLayout;\nimport android.widget.FrameLayout;\nimport android.widget.TextView;\nimport android.widget.Button;\nimport android.widget.ProgressBar;\nimport androidx.swiperefreshlayout.widget.SwipeRefreshLayout;\n');
 }
 
-// SwipeRefreshLayout is a separate AndroidX artifact.
 const gradlePath = path.join(rootDir, 'android', 'app', 'build.gradle');
 let gradle = fs.readFileSync(gradlePath, 'utf8');
 if (pullRefresh && !gradle.includes('androidx.swiperefreshlayout:swiperefreshlayout')) {
