@@ -12,6 +12,7 @@
     "native:patch": "node scripts/patch-native.mjs all && node scripts/apply-origin-policy.mjs",
     "android:runtime": "node scripts/patch-android-runtime.mjs",
     "android:verify": "node scripts/verify-android-runtime.mjs",
+    "android:package": "node scripts/package-verified-build.mjs",
     "android:debug": "npm run generate && npx cap sync android && npm run android:runtime && cd android && ./gradlew assembleDebug",
     "android:bundle": "npm run generate && npx cap sync android && npm run android:runtime && cd android && ./gradlew bundleRelease",
     "ios:sync": "npm run generate && npx cap sync ios && node scripts/patch-native.mjs ios"
