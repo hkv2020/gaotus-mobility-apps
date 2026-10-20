@@ -10,9 +10,21 @@ const isColor = (value) => /^#[0-9a-fA-F]{6}$/.test(String(value || ''));
 const isObj = (value) => value && typeof value === 'object' && !Array.isArray(value);
 const pushBoolErrors = (errors, object, keys, prefix) => {
   if (!isObj(object)) return;
-  for (const key of keys) {
-    if (key in object && !isBool(object[key])) errors.push(`${prefix}.${key} must be boolean`);
-  }
+  for (const key of keys) if (key in object && !isBool(object[key])) errors.push(`${prefix}.${key} must be boolean`);
+};
+const validUrlish = (value) => {
+  const s = String(value || '').trim();
+  if (!s) return true;
+  if (s.startsWith('/')) return true;
+  if (/^\{\{ENV[.:][A-Z][A-Z0-9_]*\}\}/.test(s)) return true;
+  try { const u = new URL(s); return ['http:', 'https:'].includes(u.protocol); } catch { return false; }
+};
+const integerRange = (errors, value, min, max, label) => {
+  if (value === undefined) return;
+  if (!Number.isInteger(value) || value < min || value > max) errors.push(`${label} must be integer ${min}-${max}`);
+};
+const textLimit = (errors, value, max, label) => {
+  if (value !== undefined && String(value).length > max) errors.push(`${label} must be <= ${max} characters`);
 };
 
 export function validateClient(c) {
@@ -52,12 +64,12 @@ export function validateClient(c) {
   pushBoolErrors(errors, c?.communication, ['native_share', 'external_phone_email'], 'communication');
   pushBoolErrors(errors, c?.deviceHardware, ['keep_screen_on'], 'deviceHardware');
   pushBoolErrors(errors, c?.localisation, ['rtl'], 'localisation');
+  pushBoolErrors(errors, c?.pdfViewer, ['enabled'], 'pdfViewer');
+  pushBoolErrors(errors, c?.backExit, ['disable_back_button'], 'backExit');
 
   const settings = c?.appSettings || {};
   if (settings.orientation !== undefined && !['portrait', 'landscape', 'both'].includes(settings.orientation)) errors.push('appSettings.orientation invalid');
-  for (const key of ['status_bar_color', 'navigation_bar_color']) {
-    if (settings[key] !== undefined && !isColor(settings[key])) errors.push(`appSettings.${key} must be #RRGGBB`);
-  }
+  for (const key of ['status_bar_color', 'navigation_bar_color']) if (settings[key] !== undefined && !isColor(settings[key])) errors.push(`appSettings.${key} must be #RRGGBB`);
 
   const links = c?.linkHandling || {};
   if (links.external_mode !== undefined && !['external', 'in_app'].includes(links.external_mode)) errors.push('linkHandling.external_mode invalid');
@@ -69,18 +81,67 @@ export function validateClient(c) {
   if (String(overrides.custom_headers || '').length > 20000) errors.push('overrides.custom_headers too large');
 
   const ui = c?.uiNavigation || {};
-  pushBoolErrors(errors, ui, ['header_enabled', 'bottom_nav_enabled', 'floating_button_enabled'], 'uiNavigation');
-  if (ui.header_background !== undefined && !isColor(ui.header_background)) errors.push('uiNavigation.header_background must be #RRGGBB');
-  if (ui.header_text !== undefined && !isColor(ui.header_text)) errors.push('uiNavigation.header_text must be #RRGGBB');
-  if (ui.bottom_nav_items !== undefined) {
-    if (!Array.isArray(ui.bottom_nav_items)) errors.push('uiNavigation.bottom_nav_items must be array');
-    else {
-      if (ui.bottom_nav_items.length > 5) errors.push('uiNavigation.bottom_nav_items max 5');
-      ui.bottom_nav_items.forEach((item, index) => {
-        if (!isObj(item) || !String(item.label || '').trim() || !String(item.url || '').trim()) errors.push(`uiNavigation.bottom_nav_items[${index}] requires label and url`);
-      });
+  pushBoolErrors(errors, ui, [
+    'header_enabled', 'bottom_nav_enabled', 'floating_button_enabled', 'sidebar_enabled',
+    'offline_enabled', 'error_enabled'
+  ], 'uiNavigation');
+  const colorKeys = [
+    'header_background', 'header_text', 'bottom_nav_default_color', 'bottom_nav_active_color',
+    'bottom_nav_background_color', 'floating_button_background', 'floating_button_text',
+    'sidebar_background', 'sidebar_text', 'offline_background', 'offline_title_color',
+    'offline_message_color', 'offline_button_background', 'offline_button_text_color',
+    'error_background', 'error_title_color', 'error_message_color', 'error_button_background',
+    'error_button_text_color', 'page_loader_color', 'page_loader_background', 'pull_refresh_color'
+  ];
+  for (const key of colorKeys) if (ui[key] !== undefined && !isColor(ui[key])) errors.push(`uiNavigation.${key} must be #RRGGBB`);
+  if (ui.header_template !== undefined && !['simple_dark','side_logo_dark','simple_light','floating_dark','right_logo_dark','logo_search'].includes(ui.header_template)) errors.push('uiNavigation.header_template invalid');
+  if (ui.floating_button_position !== undefined && !['left','right'].includes(ui.floating_button_position)) errors.push('uiNavigation.floating_button_position invalid');
+  if (ui.floating_button_shape !== undefined && !['circular','square'].includes(ui.floating_button_shape)) errors.push('uiNavigation.floating_button_shape invalid');
+  if (ui.sidebar_template !== undefined && !['vertical_cards','submenus','cards','single'].includes(ui.sidebar_template)) errors.push('uiNavigation.sidebar_template invalid');
+  if (ui.page_loader_type !== undefined && !['progress','circular','lottie'].includes(ui.page_loader_type)) errors.push('uiNavigation.page_loader_type invalid');
+  textLimit(errors, ui.header_title, 80, 'uiNavigation.header_title');
+  textLimit(errors, ui.header_search_url, 500, 'uiNavigation.header_search_url');
+  textLimit(errors, ui.floating_button_label, 40, 'uiNavigation.floating_button_label');
+  textLimit(errors, ui.floating_button_url, 1000, 'uiNavigation.floating_button_url');
+  textLimit(errors, ui.floating_button_icon, 40, 'uiNavigation.floating_button_icon');
+  integerRange(errors, ui.offline_title_size, 12, 64, 'uiNavigation.offline_title_size');
+  integerRange(errors, ui.offline_message_size, 10, 32, 'uiNavigation.offline_message_size');
+  integerRange(errors, ui.offline_button_margin, 0, 50, 'uiNavigation.offline_button_margin');
+  integerRange(errors, ui.error_title_size, 12, 64, 'uiNavigation.error_title_size');
+  integerRange(errors, ui.error_message_size, 10, 32, 'uiNavigation.error_message_size');
+  integerRange(errors, ui.error_button_margin, 0, 50, 'uiNavigation.error_button_margin');
+  for (const [key, value] of [['offline_title_weight', ui.offline_title_weight],['offline_message_weight',ui.offline_message_weight],['error_title_weight',ui.error_title_weight],['error_message_weight',ui.error_message_weight]]) {
+    if (value !== undefined && ![400,600,700].includes(Number(value))) errors.push(`uiNavigation.${key} invalid`);
+  }
+  for (const key of ['floating_button_url','offline_image_url','error_image_url','page_loader_lottie_url','header_search_url']) if (ui[key] && !validUrlish(ui[key]) && key !== 'header_search_url') errors.push(`uiNavigation.${key} invalid`);
+
+  const validateNavItems = (items, max, label) => {
+    if (items === undefined) return;
+    if (!Array.isArray(items)) return errors.push(`${label} must be array`);
+    if (items.length > max) errors.push(`${label} max ${max}`);
+    items.forEach((item, index) => {
+      if (!isObj(item) || !String(item.label || '').trim() || !String(item.url || '').trim()) return errors.push(`${label}[${index}] requires label and url`);
+      if (!validUrlish(item.url)) errors.push(`${label}[${index}].url invalid`);
+      textLimit(errors, item.label, 40, `${label}[${index}].label`);
+      textLimit(errors, item.icon, 40, `${label}[${index}].icon`);
+    });
+  };
+  validateNavItems(ui.bottom_nav_items, 5, 'uiNavigation.bottom_nav_items');
+  validateNavItems(ui.sidebar_items, 12, 'uiNavigation.sidebar_items');
+
+  const back = c?.backExit || {};
+  if (back.mode !== undefined && !['confirm','immediate'].includes(back.mode)) errors.push('backExit.mode invalid');
+  textLimit(errors, back.message, 100, 'backExit.message');
+  for (const listKey of ['exit_pages','disable_back_pages']) {
+    if (back[listKey] !== undefined) {
+      if (!Array.isArray(back[listKey])) errors.push(`backExit.${listKey} must be array`);
+      else if (back[listKey].length > 30) errors.push(`backExit.${listKey} max 30`);
+      else back[listKey].forEach((value, index) => { if (!validUrlish(value)) errors.push(`backExit.${listKey}[${index}] invalid`); });
     }
   }
+
+  const pdf = c?.pdfViewer || {};
+  if (pdf.mode !== undefined && !['in_app','external'].includes(pdf.mode)) errors.push('pdfViewer.mode invalid');
 
   const notifications = c?.notifications || {};
   const provider = notifications.provider || 'none';
@@ -105,7 +166,7 @@ export function validateClient(c) {
   if (environment !== undefined) {
     if (!Array.isArray(environment)) errors.push('environment must be array');
     else {
-      if (environment.length > 20) errors.push('environment max 20 entries');
+      if (environment.length > 40) errors.push('environment max 40 entries');
       const seen = new Set();
       environment.forEach((row, index) => {
         if (!isObj(row)) return errors.push(`environment[${index}] must be object`);
@@ -122,6 +183,53 @@ export function validateClient(c) {
   return c;
 }
 
+export function environmentMap(c) {
+  validateClient(c);
+  const map = {};
+  if (c.mode === 'remote' && c.url) map.BASE_URL = String(c.url).replace(/\/+$/, '');
+  else map.BASE_URL = '';
+  for (const row of Array.isArray(c.environment) ? c.environment : []) {
+    const key = String(row?.key || '').trim().toUpperCase();
+    if (!key || key === 'BASE_URL') continue;
+    map[key] = String(row?.value ?? '');
+  }
+  const token = /\{\{ENV(?:\.|:)([A-Z][A-Z0-9_]*)\}\}/g;
+  for (let pass = 0; pass < 6; pass++) {
+    let changed = false;
+    for (const key of Object.keys(map)) {
+      const next = String(map[key]).replace(token, (_, name) => Object.prototype.hasOwnProperty.call(map, name) ? map[name] : `{{ENV.${name}}}`);
+      if (next !== map[key]) { map[key] = next; changed = true; }
+    }
+    if (!changed) break;
+  }
+  if (map.BASE_URL) {
+    for (const key of Object.keys(map)) {
+      if (key !== 'BASE_URL' && String(map[key]).startsWith('/')) map[key] = map.BASE_URL + String(map[key]);
+    }
+  }
+  return map;
+}
+
+export function resolveEnvironmentTokens(c) {
+  const source = structuredClone(validateClient(c));
+  const env = environmentMap(source);
+  const token = /\{\{ENV(?:\.|:)([A-Z][A-Z0-9_]*)\}\}/g;
+  const walk = (value, key = '') => {
+    if (key === 'firebaseGoogleServicesB64') return value;
+    if (typeof value === 'string') return value.replace(token, (_, name) => Object.prototype.hasOwnProperty.call(env, name) ? env[name] : `{{ENV.${name}}}`);
+    if (Array.isArray(value)) return value.map((v) => walk(v));
+    if (isObj(value)) {
+      const out = {};
+      for (const [k, v] of Object.entries(value)) out[k] = walk(v, k);
+      return out;
+    }
+    return value;
+  };
+  const resolved = walk(source);
+  resolved.environment = Object.entries(env).map(([key, value]) => ({ key, value }));
+  return resolved;
+}
+
 export function featurePlan(c) {
   validateClient(c);
   const settings = c.appSettings || {};
@@ -129,12 +237,27 @@ export function featurePlan(c) {
   const notifications = c.notifications || {};
   const security = c.security || {};
   const device = c.deviceHardware || {};
+  const pdf = c.pdfViewer || {};
+  const back = c.backExit || {};
+  const pageLoaderType = ['progress','circular','lottie'].includes(ui.page_loader_type) ? ui.page_loader_type : 'circular';
   return {
     remote: c.mode === 'remote',
     host: c.mode === 'remote' ? new URL(c.url).hostname : '',
     pullRefresh: settings.pull_to_refresh === true,
     pageLoader: settings.page_loader === true,
-    nativeUi: ui.header_enabled === true || ui.bottom_nav_enabled === true || ui.floating_button_enabled === true || settings.pull_to_refresh === true || settings.page_loader === true,
+    pageLoaderType,
+    lottieLoader: settings.page_loader === true && pageLoaderType === 'lottie',
+    header: ui.header_enabled === true,
+    bottomNav: ui.bottom_nav_enabled === true,
+    floatingButton: ui.floating_button_enabled === true,
+    sidebar: ui.sidebar_enabled === true,
+    nativeUi: ui.header_enabled === true || ui.bottom_nav_enabled === true || ui.floating_button_enabled === true || ui.sidebar_enabled === true || settings.pull_to_refresh === true || settings.page_loader === true,
+    offlineScreen: ui.offline_enabled !== false,
+    errorScreen: ui.error_enabled !== false,
+    pdfViewer: pdf.enabled === true,
+    pdfViewerMode: pdf.mode === 'external' ? 'external' : 'in_app',
+    backExitMode: back.mode === 'immediate' ? 'immediate' : 'confirm',
+    disableBack: back.disable_back_button === true,
     notifications: ['firebase', 'onesignal'].includes(notifications.provider) ? notifications.provider : 'none',
     biometric: security.biometric_lock === true,
     secureWindow: security.prevent_screenshots === true,
