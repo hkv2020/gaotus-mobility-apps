@@ -4,6 +4,7 @@ import { rootDir } from './lib.mjs';
 
 const steps = [
   ['patch-native.mjs', 'android'],
+  ['patch-android-permissions.mjs'],
   ['apply-origin-policy.mjs'],
   ['patch-android-back.mjs'],
   ['patch-android-ui.mjs'],
