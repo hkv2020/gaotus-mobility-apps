@@ -1,5 +1,5 @@
 name: Gaotus AppForge Builder
-run-name: "AppForge ${{ inputs.build_id }} — ${{ inputs.app_name }}"
+run-name: "AppForge ${{ inputs.build_id }} — ${{ inputs.app_name }} — ${{ inputs.platform }}"
 
 on:
   workflow_dispatch:
@@ -12,6 +12,15 @@ on:
         description: App display name
         required: true
         type: string
+      platform:
+        description: android, ios or both
+        required: false
+        default: android
+        type: choice
+        options:
+          - android
+          - ios
+          - both
       config_b64:
         description: Base64 encoded AppForge client JSON
         required: true
@@ -27,6 +36,7 @@ defaults:
 
 jobs:
   android:
+    if: ${{ inputs.platform == 'android' || inputs.platform == 'both' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -46,12 +56,11 @@ jobs:
           test -n "$ANDROID_HOME"
           test -d "$ANDROID_HOME"
           echo "ANDROID_HOME=$ANDROID_HOME"
-          if command -v sdkmanager >/dev/null 2>&1; then sdkmanager --version; else echo "sdkmanager is not on PATH; Gradle will use ANDROID_HOME"; fi
       - name: Install factory dependencies
         run: npm install --no-audit --no-fund
       - name: Run factory contract tests
         run: npm test
-      - name: Decode runtime configuration
+      - name: Decode Android runtime configuration
         env:
           APPFORGE_CONFIG_B64: ${{ inputs.config_b64 }}
         run: |
@@ -59,18 +68,16 @@ jobs:
           const fs = require('fs');
           const encoded = String(process.env.APPFORGE_CONFIG_B64 || '');
           if (!encoded || encoded.length > 900000) throw new Error('AppForge config input missing or too large');
-          const raw = Buffer.from(encoded, 'base64').toString('utf8');
-          const parsed = JSON.parse(raw);
+          const parsed = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
           fs.writeFileSync('clients/runtime-builder.json', JSON.stringify(parsed, null, 2) + '\n');
-          console.log('[AppForge] runtime config decoded for', parsed.appName);
           NODE
-      - name: Validate config and generate feature plan
+      - name: Validate Android config and generate feature plan
         run: node scripts/generate-client.mjs clients/runtime-builder.json
-      - name: Prepare offline screen
+      - name: Prepare Android offline screen
         run: node scripts/prepare-offline.mjs
       - name: Add clean Android platform
         run: npx cap add android
-      - name: Generate client branding
+      - name: Generate Android branding
         run: |
           if node -e "const c=require('./generated-client.json'); process.exit(c.iconUrl ? 0 : 1)"; then
             npm install --no-save --no-audit --no-fund @capacitor/assets@3.0.5 sharp
@@ -79,9 +86,9 @@ jobs:
           else
             echo "[AppForge] no custom icon selected; using master Android assets"
           fi
-      - name: Sync Capacitor shell
+      - name: Sync Android Capacitor shell
         run: npx cap sync android
-      - name: Apply and verify native feature runtime
+      - name: Apply and verify Android native runtime
         run: node scripts/patch-android-runtime.mjs
       - name: Build installable debug APK
         run: cd android && ./gradlew assembleDebug --no-daemon
@@ -95,15 +102,122 @@ jobs:
           unzip -tqq android/app/build/outputs/bundle/release/app-release.aab
           test -s runtime-verification.json
           test -s generated-feature-plan.json
-          echo "[AppForge] APK/AAB integrity PASS"
-      - name: Prepare verified outputs
+      - name: Prepare verified Android outputs
         env:
           BUILD_ID: ${{ inputs.build_id }}
         run: node scripts/package-verified-build.mjs "$BUILD_ID"
+      - name: Stage Android outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: "stage-${{ inputs.build_id }}-android"
+          path: appforge-mvp/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  ios:
+    if: ${{ inputs.platform == 'ios' || inputs.platform == 'both' }}
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout factory source
+        uses: actions/checkout@v4
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install factory dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run factory contract tests
+        run: npm test
+      - name: Decode iOS runtime configuration
+        env:
+          APPFORGE_CONFIG_B64: ${{ inputs.config_b64 }}
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const encoded = String(process.env.APPFORGE_CONFIG_B64 || '');
+          if (!encoded || encoded.length > 900000) throw new Error('AppForge config input missing or too large');
+          const parsed = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+          fs.writeFileSync('clients/runtime-builder.json', JSON.stringify(parsed, null, 2) + '\n');
+          NODE
+      - name: Validate iOS config and generate feature plan
+        run: node scripts/generate-client.mjs clients/runtime-builder.json
+      - name: Add clean iOS platform
+        run: npx cap add ios
+      - name: Generate iOS branding
+        run: |
+          if node -e "const c=require('./generated-client.json'); process.exit(c.iconUrl ? 0 : 1)"; then
+            npm install --no-save --no-audit --no-fund @capacitor/assets@3.0.5 sharp
+            node scripts/prepare-branding.mjs
+            npx capacitor-assets generate --ios
+          else
+            echo "[AppForge] no custom icon selected; using master iOS assets"
+          fi
+      - name: Sync iOS Capacitor shell
+        run: npx cap sync ios
+      - name: Apply iOS native bridge
+        run: node scripts/patch-native.mjs ios
+      - name: Apply canonical iOS runtime
+        run: node scripts/patch-ios-runtime.mjs
+      - name: Verify iOS native runtime
+        run: node scripts/verify-ios-runtime.mjs
+      - name: Build iOS Simulator app
+        run: |
+          cd ios/App
+          if [ -f Podfile ]; then
+            pod install
+            xcodebuild -workspace App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath ../../build/ios-sim CODE_SIGNING_ALLOWED=NO build
+          else
+            xcodebuild -project App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath ../../build/ios-sim CODE_SIGNING_ALLOWED=NO build
+          fi
+      - name: Verify iOS Simulator app
+        run: |
+          test -d build/ios-sim/Build/Products/Debug-iphonesimulator/App.app
+          test -s ios-runtime-verification.json
+          plutil -lint ios/App/App/Info.plist
+      - name: Prepare verified iOS Simulator output
+        env:
+          BUILD_ID: ${{ inputs.build_id }}
+        run: node scripts/package-ios-simulator.mjs "$BUILD_ID" build/ios-sim/Build/Products/Debug-iphonesimulator/App.app
+      - name: Stage iOS outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: "stage-${{ inputs.build_id }}-ios"
+          path: appforge-mvp/dist-ios/
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    if: ${{ always() && (needs.android.result == 'success' || needs.android.result == 'skipped') && (needs.ios.result == 'success' || needs.ios.result == 'skipped') }}
+    needs: [android, ios]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Collect verified platform outputs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "stage-${{ inputs.build_id }}-*"
+          path: final-dist
+          merge-multiple: true
+      - name: Verify publish payload
+        working-directory: .
+        run: |
+          test -d final-dist
+          find final-dist -maxdepth 1 -type f -print
+          COUNT=$(find final-dist -maxdepth 1 -type f | wc -l)
+          test "$COUNT" -gt 0
+          if [ "${{ inputs.platform }}" = "android" ] || [ "${{ inputs.platform }}" = "both" ]; then
+            test -s "final-dist/${{ inputs.build_id }}.apk"
+            test -s "final-dist/${{ inputs.build_id }}.aab"
+          fi
+          if [ "${{ inputs.platform }}" = "ios" ] || [ "${{ inputs.platform }}" = "both" ]; then
+            test -s "final-dist/${{ inputs.build_id }}-ios-simulator.zip"
+            test -s "final-dist/${{ inputs.build_id }}-ios-verification.json"
+          fi
       - name: Upload verified build artifact
         uses: actions/upload-artifact@v4
         with:
           name: "appforge-${{ inputs.build_id }}"
-          path: appforge-mvp/dist/
+          path: final-dist/
           if-no-files-found: error
           retention-days: 30
