@@ -1,1 +1,73 @@
-(()=>{'use strict';const A=()=>typeof window.GaotusNativeAndroid!=='undefined',I=()=>!!window.webkit?.messageHandlers?.gaotusNative,P=(action,payload={})=>{if(!I())return false;window.webkit.messageHandlers.gaotusNative.postMessage({action,payload});return true},J=(v,f={})=>{try{return typeof v==='object'?v:JSON.parse(v)}catch{return f}};const N={version:'0.1.0',platform:()=>A()?'android':I()?'ios':'web',available:()=>A()||I(),async ping(){if(A())return J(window.GaotusNativeAndroid.ping(),{platform:'android'});if(I()){P('ping');return{ok:true,platform:'ios'}}return{ok:true,platform:'web'}},async deviceInfo(){if(A())return J(window.GaotusNativeAndroid.deviceInfo(),{platform:'android'});if(I()){P('deviceInfo');return{platform:'ios'}}return{platform:'web',userAgent:navigator.userAgent}},async share(o={}){const p={title:String(o.title||''),text:String(o.text||''),url:String(o.url||location.href)};if(A()){window.GaotusNativeAndroid.share(JSON.stringify(p));return{ok:true,platform:'android'}}if(P('share',p))return{ok:true,platform:'ios'};if(navigator.share){await navigator.share(p);return{ok:true,platform:'web'}}throw new Error('share unavailable')},async haptic(type='medium'){if(A()){window.GaotusNativeAndroid.haptic(type);return{ok:true,platform:'android'}}if(P('haptic',{type}))return{ok:true,platform:'ios'};navigator.vibrate?.(45);return{ok:true,platform:'web'}},async openExternal(url){url=String(url||'');if(!/^https?:\/\//i.test(url))throw new Error('http/https only');if(A()){window.GaotusNativeAndroid.openExternal(url);return{ok:true,platform:'android'}}if(P('openExternal',{url}))return{ok:true,platform:'ios'};window.open(url,'_blank','noopener');return{ok:true,platform:'web'}},camera:{async open(){if(A()){window.GaotusNativeAndroid.openCamera();return{ok:true,platform:'android'}}if(P('openCamera'))return{ok:true,platform:'ios'};const i=document.createElement('input');i.type='file';i.accept='image/*';i.capture='environment';i.click();return{ok:true,platform:'web'}}},location:{current(o={}){return new Promise((r,j)=>navigator.geolocation?navigator.geolocation.getCurrentPosition(p=>r({latitude:p.coords.latitude,longitude:p.coords.longitude,accuracy:p.coords.accuracy}),j,{enableHighAccuracy:true,timeout:o.timeout||10000}):j(new Error('geolocation unavailable')))}},toast(m){if(A()){window.GaotusNativeAndroid.toast(String(m));return true}return P('toast',{message:String(m)})}};Object.defineProperty(window,'GaotusNative',{value:N});window.dispatchEvent(new CustomEvent('gaotusnative:ready',{detail:{platform:N.platform()}}))})();
+(()=>{
+  'use strict';
+  const hasAndroid=()=>typeof window.GaotusNativeAndroid!=='undefined';
+  const hasIOS=()=>!!window.webkit?.messageHandlers?.gaotusNative;
+  const postIOS=(action,payload={})=>{
+    if(!hasIOS())return false;
+    window.webkit.messageHandlers.gaotusNative.postMessage({action,payload});
+    return true;
+  };
+  const parse=(value,fallback={})=>{
+    try{return typeof value==='object'?value:JSON.parse(value)}catch{return fallback}
+  };
+  const androidResult=(value,action)=>parse(value,{ok:false,platform:'android',action,error:'invalid_native_response'});
+
+  const Native={
+    version:'0.1.1',
+    platform:()=>hasAndroid()?'android':hasIOS()?'ios':'web',
+    available:()=>hasAndroid()||hasIOS(),
+    async ping(){
+      if(hasAndroid())return androidResult(window.GaotusNativeAndroid.ping(),'ping');
+      if(hasIOS()){postIOS('ping');return{ok:true,platform:'ios'}}
+      return{ok:true,platform:'web'};
+    },
+    async deviceInfo(){
+      if(hasAndroid())return androidResult(window.GaotusNativeAndroid.deviceInfo(),'deviceInfo');
+      if(hasIOS()){postIOS('deviceInfo');return{ok:true,platform:'ios'}}
+      return{ok:true,platform:'web',userAgent:navigator.userAgent};
+    },
+    async share(options={}){
+      const payload={title:String(options.title||''),text:String(options.text||''),url:String(options.url||location.href)};
+      if(hasAndroid())return androidResult(window.GaotusNativeAndroid.share(JSON.stringify(payload)),'share');
+      if(postIOS('share',payload))return{ok:true,platform:'ios'};
+      if(navigator.share){await navigator.share(payload);return{ok:true,platform:'web'}}
+      throw new Error('share unavailable');
+    },
+    async haptic(type='medium'){
+      if(hasAndroid())return androidResult(window.GaotusNativeAndroid.haptic(type),'haptic');
+      if(postIOS('haptic',{type}))return{ok:true,platform:'ios'};
+      navigator.vibrate?.(45);return{ok:true,platform:'web'};
+    },
+    async openExternal(url){
+      url=String(url||'');
+      if(!/^https?:\/\//i.test(url))throw new Error('http/https only');
+      if(hasAndroid())return androidResult(window.GaotusNativeAndroid.openExternal(url),'openExternal');
+      if(postIOS('openExternal',{url}))return{ok:true,platform:'ios'};
+      window.open(url,'_blank','noopener');return{ok:true,platform:'web'};
+    },
+    camera:{
+      async open(){
+        if(hasAndroid())return androidResult(window.GaotusNativeAndroid.openCamera(),'openCamera');
+        if(postIOS('openCamera'))return{ok:true,platform:'ios'};
+        const input=document.createElement('input');input.type='file';input.accept='image/*';input.capture='environment';input.click();
+        return{ok:true,platform:'web'};
+      }
+    },
+    location:{
+      current(options={}){
+        return new Promise((resolve,reject)=>navigator.geolocation?navigator.geolocation.getCurrentPosition(
+          position=>resolve({ok:true,platform:Native.platform(),latitude:position.coords.latitude,longitude:position.coords.longitude,accuracy:position.coords.accuracy}),
+          reject,
+          {enableHighAccuracy:true,timeout:options.timeout||10000}
+        ):reject(new Error('geolocation unavailable')));
+      }
+    },
+    toast(message){
+      if(hasAndroid())return androidResult(window.GaotusNativeAndroid.toast(String(message)),'toast').ok===true;
+      return postIOS('toast',{message:String(message)});
+    }
+  };
+
+  Object.defineProperty(window,'GaotusNative',{value:Native});
+  window.dispatchEvent(new CustomEvent('gaotusnative:ready',{detail:{platform:Native.platform()}}));
+})();
