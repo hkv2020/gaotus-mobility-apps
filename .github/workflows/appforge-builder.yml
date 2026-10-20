@@ -32,31 +32,25 @@ jobs:
     steps:
       - name: Checkout factory source
         uses: actions/checkout@v4
-
       - name: Set up Node 22
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Set up Java 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
-
       - name: Verify Android SDK environment
         run: |
           test -n "$ANDROID_HOME"
           test -d "$ANDROID_HOME"
           echo "ANDROID_HOME=$ANDROID_HOME"
           if command -v sdkmanager >/dev/null 2>&1; then sdkmanager --version; else echo "sdkmanager is not on PATH; Gradle will use ANDROID_HOME"; fi
-
       - name: Install factory dependencies
         run: npm install --no-audit --no-fund
-
       - name: Run factory contract tests
         run: npm test
-
       - name: Decode runtime configuration
         env:
           APPFORGE_CONFIG_B64: ${{ inputs.config_b64 }}
@@ -70,16 +64,12 @@ jobs:
           fs.writeFileSync('clients/runtime-builder.json', JSON.stringify(parsed, null, 2) + '\n');
           console.log('[AppForge] runtime config decoded for', parsed.appName);
           NODE
-
       - name: Validate config and generate feature plan
         run: node scripts/generate-client.mjs clients/runtime-builder.json
-
       - name: Prepare offline screen
         run: node scripts/prepare-offline.mjs
-
       - name: Add clean Android platform
         run: npx cap add android
-
       - name: Generate client branding
         run: |
           if node -e "const c=require('./generated-client.json'); process.exit(c.iconUrl ? 0 : 1)"; then
@@ -89,19 +79,14 @@ jobs:
           else
             echo "[AppForge] no custom icon selected; using master Android assets"
           fi
-
       - name: Sync Capacitor shell
         run: npx cap sync android
-
       - name: Apply and verify native feature runtime
         run: node scripts/patch-android-runtime.mjs
-
       - name: Build installable debug APK
         run: cd android && ./gradlew assembleDebug --no-daemon
-
       - name: Build release AAB
         run: cd android && ./gradlew bundleRelease --no-daemon
-
       - name: Verify Android artifacts
         run: |
           test -s android/app/build/outputs/apk/debug/app-debug.apk
@@ -111,38 +96,10 @@ jobs:
           test -s runtime-verification.json
           test -s generated-feature-plan.json
           echo "[AppForge] APK/AAB integrity PASS"
-
       - name: Prepare verified outputs
         env:
           BUILD_ID: ${{ inputs.build_id }}
-        run: |
-          mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/${BUILD_ID}.apk"
-          cp android/app/build/outputs/bundle/release/app-release.aab "dist/${BUILD_ID}.aab"
-          cp runtime-verification.json "dist/${BUILD_ID}-verification.json"
-          cp generated-feature-plan.json "dist/${BUILD_ID}-feature-plan.json"
-          node - <<'NODE'
-          const fs = require('fs');
-          const crypto = require('crypto');
-          const buildId = process.env.BUILD_ID;
-          const c = JSON.parse(fs.readFileSync('generated-client.json','utf8'));
-          delete c.firebaseGoogleServicesB64;
-          fs.writeFileSync(`dist/${buildId}-config.json`, JSON.stringify(c, null, 2) + '\n');
-          const files = [`dist/${buildId}.apk`, `dist/${buildId}.aab`];
-          const artifacts = {};
-          for (const file of files) {
-            const body = fs.readFileSync(file);
-            artifacts[file.endsWith('.apk') ? 'apk' : 'aab'] = {
-              filename: file.split('/').pop(),
-              bytes: body.length,
-              sha256: crypto.createHash('sha256').update(body).digest('hex')
-            };
-          }
-          const verification = JSON.parse(fs.readFileSync('runtime-verification.json','utf8'));
-          fs.writeFileSync(`dist/${buildId}-build-report.json`, JSON.stringify({ buildId, verified: true, verification, artifacts }, null, 2) + '\n');
-          NODE
-          sha256sum "dist/${BUILD_ID}.apk" "dist/${BUILD_ID}.aab" > "dist/${BUILD_ID}-SHA256SUMS.txt"
-
+        run: node scripts/package-verified-build.mjs "$BUILD_ID"
       - name: Upload verified build artifact
         uses: actions/upload-artifact@v4
         with:
