@@ -51,3 +51,26 @@ jobs:
             appforge-mvp/android/app/build/outputs/apk/debug/app-debug.apk
             appforge-mvp/android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
+
+  native-ui-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install JS dependencies
+        run: npm install --no-audit --no-fund
+      - name: Generate advanced UI fixture
+        run: node scripts/generate-client.mjs clients/ui-smoke.json
+      - name: Add Android platform
+        run: npx cap add android
+      - name: Apply advanced native runtime
+        run: npx cap sync android && node scripts/patch-native.mjs android && node scripts/patch-android-back.mjs && node scripts/patch-android-ui.mjs
+      - name: Build advanced UI APK
+        run: cd android && ./gradlew assembleDebug --no-daemon
