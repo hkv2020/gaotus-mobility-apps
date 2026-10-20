@@ -10,9 +10,11 @@ const steps = [
   ['patch-android-ui.mjs'],
   ['patch-android-icon-glyphs.mjs'],
   ['patch-android-webview.mjs'],
+  ['patch-android-device-tools.mjs'],
   ['patch-android-notifications.mjs'],
   ['patch-android-security.mjs'],
   ['reconcile-android-generated.mjs'],
+  ['verify-android-device-tools.mjs'],
   ['verify-android-runtime.mjs'],
 ];
 
