@@ -37,12 +37,20 @@ expect(gradle.includes(`versionCode ${client.versionCode}`), 'Gradle versionCode
 expect(gradle.includes(`versionName "${client.versionName}"`), 'Gradle versionName mismatch');
 expect(fs.existsSync(path.join(rootDir, 'www', 'offline.html')), 'offline.html missing');
 
-const permissions = client.permissions || {};
-expect(hasPermission('android.permission.CAMERA') === (permissions.camera === true), 'CAMERA permission mismatch');
-expect(hasPermission('android.permission.VIBRATE') === (permissions.vibration !== false), 'VIBRATE permission mismatch');
-expect(hasPermission('android.permission.ACCESS_COARSE_LOCATION') === (permissions.location === true), 'COARSE_LOCATION permission mismatch');
-expect(hasPermission('android.permission.ACCESS_FINE_LOCATION') === (permissions.location === true), 'FINE_LOCATION permission mismatch');
-expect(hasPermission('android.permission.RECORD_AUDIO') === (permissions.microphone === true), 'RECORD_AUDIO permission mismatch');
+const configured = client.permissions || {};
+const features = client.features || {};
+const boolOr = (key, fallback) => typeof configured[key] === 'boolean' ? configured[key] : fallback;
+const permissions = {
+  camera: boolOr('camera', features.camera === true),
+  location: boolOr('location', features.location === true),
+  microphone: boolOr('microphone', false),
+  vibration: boolOr('vibration', features.haptics === true),
+};
+expect(hasPermission('android.permission.CAMERA') === permissions.camera, 'CAMERA permission mismatch');
+expect(hasPermission('android.permission.VIBRATE') === permissions.vibration, 'VIBRATE permission mismatch');
+expect(hasPermission('android.permission.ACCESS_COARSE_LOCATION') === permissions.location, 'COARSE_LOCATION permission mismatch');
+expect(hasPermission('android.permission.ACCESS_FINE_LOCATION') === permissions.location, 'FINE_LOCATION permission mismatch');
+expect(hasPermission('android.permission.RECORD_AUDIO') === permissions.microphone, 'RECORD_AUDIO permission mismatch');
 
 const swipeDep = gradle.includes('androidx.swiperefreshlayout:swiperefreshlayout');
 const swipeRef = main.includes('SwipeRefreshLayout');
@@ -73,6 +81,7 @@ if (plan.notifications === 'none') {
   expect(!fcmDep, 'Firebase messaging dependency present while notifications disabled');
   expect(!oneSignalDep, 'OneSignal dependency present while notifications disabled');
   expect(!pushService, 'Push service present while notifications disabled');
+  expect(!hasPermission('android.permission.POST_NOTIFICATIONS'), 'POST_NOTIFICATIONS permission present while notifications disabled');
 } else {
   expect(googleServices, 'Push enabled but google-services.json missing');
   expect(fcmDep, 'Push enabled but Firebase messaging dependency missing');
@@ -97,8 +106,9 @@ const report = {
   url: client.url || null,
   versionName: client.versionName,
   versionCode: client.versionCode,
+  permissions,
   plan,
   verifiedAt: new Date().toISOString(),
 };
 fs.writeFileSync(path.join(rootDir, 'runtime-verification.json'), JSON.stringify(report, null, 2) + '\n');
-console.log('[AppForge] Android runtime verification PASS', JSON.stringify(plan));
+console.log('[AppForge] Android runtime verification PASS', JSON.stringify({ ...plan, permissions }));
