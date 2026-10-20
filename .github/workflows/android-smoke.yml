@@ -14,8 +14,9 @@ defaults:
 
 jobs:
   android-debug:
+    name: factory-base-apk-aab
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,43 +26,57 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - name: Verify preinstalled Android SDK
+      - name: Verify Android SDK
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          command -v sdkmanager || true
-          sdkmanager --version || true
-      - name: Install JS dependencies
+          command -v sdkmanager >/dev/null
+          sdkmanager --version
+      - name: Install factory dependencies
         run: npm install --no-audit --no-fund
-      - name: Run generator tests
+      - name: Run factory contract tests
         run: npm test
-      - name: Generate client config
-        run: npm run generate
-      - name: Add Android platform
+      - name: Generate base client and feature plan
+        run: node scripts/generate-client.mjs clients/demo.json
+      - name: Prepare offline screen
+        run: node scripts/prepare-offline.mjs
+      - name: Add clean Android platform
         run: npx cap add android
-      - name: Sync and patch native shell
-        run: npx cap sync android && node scripts/patch-native.mjs android && node scripts/apply-origin-policy.mjs
+      - name: Sync Capacitor shell
+        run: npx cap sync android
+      - name: Apply canonical verified Android runtime
+        run: node scripts/patch-android-runtime.mjs
       - name: Build installable debug APK
         run: cd android && ./gradlew assembleDebug --no-daemon
-      - name: Build release AAB (unsigned unless signing is later configured)
+      - name: Build release AAB
         run: cd android && ./gradlew bundleRelease --no-daemon
+      - name: Verify base artifacts
+        run: |
+          test -s android/app/build/outputs/apk/debug/app-debug.apk
+          test -s android/app/build/outputs/bundle/release/app-release.aab
+          unzip -tqq android/app/build/outputs/apk/debug/app-debug.apk
+          unzip -tqq android/app/build/outputs/bundle/release/app-release.aab
+          test -s runtime-verification.json
+          test -s generated-feature-plan.json
       - uses: actions/upload-artifact@v4
         with:
           name: gaotus-appforge-android-smoke
           path: |
             appforge-mvp/android/app/build/outputs/apk/debug/app-debug.apk
             appforge-mvp/android/app/build/outputs/bundle/release/app-release.aab
+            appforge-mvp/runtime-verification.json
+            appforge-mvp/generated-feature-plan.json
           if-no-files-found: error
 
-  native-ui-smoke:
-    name: native-ui-smoke (${{ matrix.fixture }})
+  feature-matrix:
+    name: feature-matrix (${{ matrix.fixture }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
         fixture:
           - ui-smoke.json
           - ui-no-refresh-smoke.json
+          - permissions-off-smoke.json
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -71,13 +86,24 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - name: Install JS dependencies
+      - name: Install factory dependencies
         run: npm install --no-audit --no-fund
-      - name: Generate advanced UI fixture
+      - name: Run factory contract tests
+        run: npm test
+      - name: Generate fixture and feature plan
         run: node scripts/generate-client.mjs clients/${{ matrix.fixture }}
-      - name: Add Android platform
+      - name: Prepare offline screen
+        run: node scripts/prepare-offline.mjs
+      - name: Add clean Android platform
         run: npx cap add android
-      - name: Apply advanced native runtime
-        run: npx cap sync android && node scripts/patch-native.mjs android && node scripts/patch-android-back.mjs && node scripts/patch-android-ui.mjs && node scripts/patch-android-webview.mjs && node scripts/patch-android-notifications.mjs && node scripts/patch-android-security.mjs
-      - name: Build advanced UI + push + security APK
+      - name: Sync Capacitor shell
+        run: npx cap sync android
+      - name: Apply canonical verified Android runtime
+        run: node scripts/patch-android-runtime.mjs
+      - name: Build feature-matrix APK
         run: cd android && ./gradlew assembleDebug --no-daemon
+      - name: Verify feature-matrix output
+        run: |
+          test -s android/app/build/outputs/apk/debug/app-debug.apk
+          unzip -tqq android/app/build/outputs/apk/debug/app-debug.apk
+          test -s runtime-verification.json
