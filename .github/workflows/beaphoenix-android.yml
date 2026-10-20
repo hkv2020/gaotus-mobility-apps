@@ -36,7 +36,7 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
       - name: Sync and patch native shell
-        run: npx cap sync android && node scripts/patch-native.mjs android
+        run: npx cap sync android && node scripts/patch-native.mjs android && node scripts/patch-android-back.mjs
       - name: Build Beaphoenix debug APK
         run: cd android && ./gradlew assembleDebug --no-daemon
       - name: Build Beaphoenix release AAB
