@@ -14,10 +14,51 @@ function walk(dir, out = []) {
 
 const files = walk(path.join(rootDir, 'android', 'app', 'src', 'main', 'java'));
 if (files.length !== 1) throw new Error(`Expected one MainActivity.java, found ${files.length}`);
+
 const file = files[0];
-let src = fs.readFileSync(file, 'utf8');
-if (!src.includes('APPFORGE_WEBVIEW_BACK')) {
-  src = src.replace(/\n}\s*$/, `\n\n  // APPFORGE_WEBVIEW_BACK\n  @Override\n  public void onBackPressed() {\n    if (getBridge() != null && getBridge().getWebView() != null && getBridge().getWebView().canGoBack()) {\n      getBridge().getWebView().goBack();\n      return;\n    }\n    super.onBackPressed();\n  }\n}\n`);
-  fs.writeFileSync(file, src);
+const original = fs.readFileSync(file, 'utf8');
+const pkg = (original.match(/package\s+([\w.]+)\s*;/) || [])[1];
+if (!pkg) throw new Error('Could not determine Android package from MainActivity.java');
+
+const source = `package ${pkg};
+
+import android.os.Bundle;
+import android.webkit.WebView;
+import androidx.activity.OnBackPressedCallback;
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {
+  private OnBackPressedCallback appForgeBackCallback;
+
+  @Override
+  protected void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+
+    if (getBridge() != null && getBridge().getWebView() != null) {
+      getBridge().getWebView().addJavascriptInterface(new GaotusNativeBridge(this), "GaotusNativeAndroid");
+    }
+
+    appForgeBackCallback = new OnBackPressedCallback(true) {
+      @Override
+      public void handleOnBackPressed() {
+        WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+
+        if (webView != null && webView.canGoBack()) {
+          webView.goBack();
+          return;
+        }
+
+        // No browser history left: temporarily disable this callback and
+        // let Android perform the normal app-level Back action.
+        setEnabled(false);
+        getOnBackPressedDispatcher().onBackPressed();
+      }
+    };
+
+    getOnBackPressedDispatcher().addCallback(this, appForgeBackCallback);
+  }
 }
-console.log('[AppForge] Android WebView back navigation patched');
+`;
+
+fs.writeFileSync(file, source);
+console.log('[AppForge] Android Back uses OnBackPressedDispatcher and WebView history');
