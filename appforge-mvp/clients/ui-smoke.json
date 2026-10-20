@@ -1,0 +1,62 @@
+{
+  "appId": "ai.gaotus.appforge.uitest",
+  "appName": "AppForge UI Smoke",
+  "mode": "remote",
+  "url": "https://example.com/",
+  "themeColor": "#111827",
+  "accentColor": "#fbbf24",
+  "versionName": "0.3.0",
+  "versionCode": 3,
+  "features": {
+    "share": true,
+    "haptics": true,
+    "openExternal": true,
+    "deviceInfo": true,
+    "camera": false,
+    "location": false
+  },
+  "permissions": {
+    "camera": false,
+    "location": false,
+    "microphone": false,
+    "storage": false,
+    "vibration": true,
+    "play_services": false
+  },
+  "appSettings": {
+    "status_bar_color": "#111827",
+    "navigation_bar_color": "#111827",
+    "orientation": "portrait",
+    "fullscreen": false,
+    "pinch_zoom": true,
+    "disable_cache": false,
+    "kiosk_mode": false,
+    "scroll_bounce": true,
+    "confirm_exit": true
+  },
+  "linkHandling": {
+    "external_mode": "external",
+    "allow_subdomains": true,
+    "allow_http": false,
+    "deep_linking": true,
+    "custom_scheme": "appforge"
+  },
+  "overrides": {
+    "custom_css": "",
+    "custom_js": "",
+    "user_agent": "GaotusAppForge/0.3",
+    "custom_headers": "X-AppForge-Smoke: yes",
+    "cookie_persistence": true
+  },
+  "uiNavigation": {
+    "header_enabled": true,
+    "header_title": "AppForge UI",
+    "header_background": "#111827",
+    "header_text": "#ffffff",
+    "bottom_nav_enabled": true,
+    "bottom_nav_items": [
+      {"label":"Home","url":"/","icon":"home"},
+      {"label":"About","url":"/about","icon":"info"}
+    ]
+  }
+}
