@@ -1,0 +1,101 @@
+name: Gaotus AppForge Builder
+run-name: "AppForge ${{ inputs.build_id }} — ${{ inputs.app_name }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: Unique build ID from WordPress
+        required: true
+        type: string
+      app_name:
+        description: App display name
+        required: true
+        type: string
+      config_b64:
+        description: Base64 encoded AppForge client JSON
+        required: true
+        type: string
+
+concurrency:
+  group: "appforge-${{ inputs.build_id }}"
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: appforge-mvp
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install JS dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run AppForge tests
+        run: npm test
+
+      - name: Decode client configuration
+        env:
+          APPFORGE_CONFIG_B64: ${{ inputs.config_b64 }}
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const raw = Buffer.from(process.env.APPFORGE_CONFIG_B64, 'base64').toString('utf8');
+          const parsed = JSON.parse(raw);
+          fs.writeFileSync('clients/runtime-builder.json', JSON.stringify(parsed, null, 2) + '\n');
+          console.log('[AppForge] runtime config decoded for', parsed.appName);
+          NODE
+
+      - name: Generate client shell
+        run: node scripts/generate-client.mjs clients/runtime-builder.json
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Generate custom icon and splash
+        run: |
+          if node -e "const c=require('./generated-client.json'); process.exit(c.iconUrl ? 0 : 1)"; then
+            npm install --no-save --no-audit --no-fund @capacitor/assets@3.0.5 sharp
+            node scripts/prepare-branding.mjs
+            npx capacitor-assets generate --android
+          else
+            echo "[AppForge] no custom icon selected; using master Android assets"
+          fi
+
+      - name: Sync and patch native shell
+        run: npx cap sync android && node scripts/patch-native.mjs android && node scripts/patch-android-back.mjs
+
+      - name: Build debug APK
+        run: cd android && ./gradlew assembleDebug --no-daemon
+
+      - name: Build release AAB
+        run: cd android && ./gradlew bundleRelease --no-daemon
+
+      - name: Prepare named outputs
+        env:
+          BUILD_ID: ${{ inputs.build_id }}
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/${BUILD_ID}.apk"
+          cp android/app/build/outputs/bundle/release/app-release.aab "dist/${BUILD_ID}.aab"
+          cp generated-client.json "dist/${BUILD_ID}-config.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: "appforge-${{ inputs.build_id }}"
+          path: appforge-mvp/dist/
+          if-no-files-found: error
+          retention-days: 30
