@@ -53,8 +53,15 @@ jobs:
           if-no-files-found: error
 
   native-ui-smoke:
+    name: native-ui-smoke (${{ matrix.fixture }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture:
+          - ui-smoke.json
+          - ui-no-refresh-smoke.json
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -67,7 +74,7 @@ jobs:
       - name: Install JS dependencies
         run: npm install --no-audit --no-fund
       - name: Generate advanced UI fixture
-        run: node scripts/generate-client.mjs clients/ui-smoke.json
+        run: node scripts/generate-client.mjs clients/${{ matrix.fixture }}
       - name: Add Android platform
         run: npx cap add android
       - name: Apply advanced native runtime
