@@ -53,8 +53,8 @@ jobs:
           fs.writeFileSync('clients/runtime-builder.json', JSON.stringify(parsed, null, 2) + '\n');
           console.log('[AppForge] runtime config decoded for', parsed.appName);
           NODE
-      - name: Generate client shell
-        run: node scripts/generate-client.mjs clients/runtime-builder.json
+      - name: Generate client shell and offline screen
+        run: node scripts/generate-client.mjs clients/runtime-builder.json && node scripts/prepare-offline.mjs
       - name: Add Android platform
         run: npx cap add android
       - name: Generate custom icon and splash
