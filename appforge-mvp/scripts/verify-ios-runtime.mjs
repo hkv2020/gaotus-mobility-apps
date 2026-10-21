@@ -48,6 +48,9 @@ expect(scene.includes(`allowedHost = \"${host}\"`), 'Allowed host mismatch');
 expect(scene.includes('webView.configuration.userContentController.add(handler, name: "gaotusNative")'), 'Native message handler missing');
 expect(scene.includes('window.GaotusNative'), 'Trusted page GaotusNative SDK missing');
 expect(scene.includes('window.GaotusEnv'), 'Trusted page environment injection missing');
+expect(scene.includes('override func viewDidLayoutSubviews()'), 'Native iOS safe-area layout override missing');
+expect(scene.includes('gaotusSafeAreaTopInset = view.safeAreaInsets.top'), 'Native iOS top safe-area inset missing');
+expect(scene.includes('webView.frame = gaotusSafeAreaFrame'), 'Native iOS safe-area WebView frame application missing');
 const directionPatterns = [
   `document.documentElement.dir = \"${direction}\"`,
   `document.documentElement.dir = \\\"${direction}\\\"`,
@@ -58,6 +61,29 @@ expect(directionPatterns.some((pattern) => scene.includes(pattern)), `LTR/RTL ru
 expectPermissionKey('NSCameraUsageDescription', permissions.camera === true, 'Camera');
 expectPermissionKey('NSLocationWhenInUseUsageDescription', permissions.location === true, 'Location');
 expectPermissionKey('NSMicrophoneUsageDescription', permissions.microphone === true, 'Microphone');
+
+let brandingVerified = !String(client.iconUrl || '').trim();
+if (String(client.iconUrl || '').trim()) {
+  const brandingPath = path.join(rootDir, 'ios-branding-verification.json');
+  expect(fs.existsSync(brandingPath), 'Custom iOS icon configured but branding verification report is missing');
+  if (fs.existsSync(brandingPath)) {
+    try {
+      const branding = readJSON(brandingPath);
+      expect(branding.ok === true, 'iOS branding verification report is not OK');
+      expect(String(branding.sourceUrl || '') === String(client.iconUrl || ''), 'iOS branding source URL mismatch');
+      expect(Array.isArray(branding.generated) && branding.generated.length > 0, 'iOS branding generated icon list is empty');
+      const setDir = path.join(rootDir, String(branding.appIconSet || ''));
+      for (const row of Array.isArray(branding.generated) ? branding.generated : []) {
+        const file = path.join(setDir, String(row.file || ''));
+        expect(fs.existsSync(file) && fs.statSync(file).size > 0, `Generated iOS icon missing: ${row.file || '?'}`);
+      }
+      brandingVerified = errors.length === 0;
+    } catch (error) {
+      errors.push(`Invalid iOS branding verification report: ${error.message}`);
+    }
+  }
+}
+
 if (errors.length) {
   console.error('[AppForge] iOS runtime verification FAILED');
   for (const error of errors) console.error(` - ${error}`);
@@ -77,6 +103,8 @@ const report = {
     trustedNativeSdk: true,
     environmentInjection: true,
     localisationDirection: true,
+    nativeSafeAreaTop: true,
+    customAppIcon: brandingVerified,
     permissionDescriptionsTopLevel: true,
     share: true,
     haptics: true,
