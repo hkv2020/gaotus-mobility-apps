@@ -2,10 +2,6 @@ name: AppForge iOS Persistent Signing Bootstrap
 
 on:
   workflow_dispatch:
-  push:
-    branches: ["appforge-mvp"]
-    paths:
-      - ".github/workflows/ios-signing-bootstrap.yml"
 
 concurrency:
   group: appforge-ios-signing-bootstrap
