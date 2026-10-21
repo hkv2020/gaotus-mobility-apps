@@ -21,6 +21,15 @@ on:
           - android
           - ios
           - both
+      ios_distribution:
+        description: iOS output mode when iOS is selected
+        required: false
+        default: simulator
+        type: choice
+        options:
+          - simulator
+          - testflight
+          - both
       config_b64:
         description: Base64 encoded AppForge client JSON
         required: true
@@ -117,7 +126,13 @@ jobs:
   ios:
     if: ${{ inputs.platform == 'ios' || inputs.platform == 'both' }}
     runs-on: macos-latest
-    timeout-minutes: 40
+    timeout-minutes: 55
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+      APP_STORE_CONNECT_KEY_PATH: /tmp/appforge-AuthKey.p8
     steps:
       - name: Checkout factory source
         uses: actions/checkout@v4
@@ -161,7 +176,14 @@ jobs:
         run: node scripts/patch-ios-runtime.mjs
       - name: Verify iOS native runtime
         run: node scripts/verify-ios-runtime.mjs
+      - name: Set App Store encryption declaration
+        run: |
+          /usr/libexec/PlistBuddy -c "Delete :ITSAppUsesNonExemptEncryption" ios/App/App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" ios/App/App/Info.plist
+          plutil -lint ios/App/App/Info.plist
+
       - name: Build iOS Simulator app
+        if: ${{ inputs.ios_distribution == 'simulator' || inputs.ios_distribution == 'both' }}
         run: |
           cd ios/App
           if [ -f Podfile ]; then
@@ -171,14 +193,179 @@ jobs:
             xcodebuild -project App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath ../../build/ios-sim CODE_SIGNING_ALLOWED=NO build
           fi
       - name: Verify iOS Simulator app
+        if: ${{ inputs.ios_distribution == 'simulator' || inputs.ios_distribution == 'both' }}
         run: |
           test -d build/ios-sim/Build/Products/Debug-iphonesimulator/App.app
           test -s ios-runtime-verification.json
           plutil -lint ios/App/App/Info.plist
       - name: Prepare verified iOS Simulator output
+        if: ${{ inputs.ios_distribution == 'simulator' || inputs.ios_distribution == 'both' }}
         env:
           BUILD_ID: ${{ inputs.build_id }}
         run: node scripts/package-ios-simulator.mjs "$BUILD_ID" build/ios-sim/Build/Products/Debug-iphonesimulator/App.app
+
+      - name: Prepare Apple API key
+        if: ${{ inputs.ios_distribution == 'testflight' || inputs.ios_distribution == 'both' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$APPLE_TEAM_ID"
+          test -n "$APP_STORE_CONNECT_ISSUER_ID"
+          test -n "$APP_STORE_CONNECT_KEY_ID"
+          test -n "$APP_STORE_CONNECT_API_KEY_P8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_P8" > "$APP_STORE_CONNECT_KEY_PATH"
+          chmod 600 "$APP_STORE_CONNECT_KEY_PATH"
+          grep -q "BEGIN PRIVATE KEY" "$APP_STORE_CONNECT_KEY_PATH"
+      - name: Verify Apple app record
+        if: ${{ inputs.ios_distribution == 'testflight' || inputs.ios_distribution == 'both' }}
+        env:
+          APPLE_REGISTER_BUNDLE_ID: "true"
+          APPLE_REQUIRE_APP_RECORD: "true"
+        run: node scripts/apple-connect-preflight.mjs clients/runtime-builder.json
+      - name: Materialize persistent Apple signing identity
+        if: ${{ inputs.ios_distribution == 'testflight' || inputs.ios_distribution == 'both' }}
+        run: node scripts/apple-signing-materialize.mjs clients/runtime-builder.json signing/apple-distribution.enc.json build/testflight/signing
+      - name: Install persistent signing identity and temporary profile
+        if: ${{ inputs.ios_distribution == 'testflight' || inputs.ios_distribution == 'both' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIGNING_DIR="$PWD/build/testflight/signing"
+          KEYCHAIN_PATH="$RUNNER_TEMP/appforge-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          P12_PASSWORD="$(openssl rand -hex 24)"
+          PROFILE_UUID="$(node -p "JSON.parse(require('fs').readFileSync('$SIGNING_DIR/apple-signing-material.json','utf8')).profileUuid")"
+          PROFILE_NAME="$(node -p "JSON.parse(require('fs').readFileSync('$SIGNING_DIR/apple-signing-material.json','utf8')).profileName")"
+          openssl x509 -inform DER -in "$SIGNING_DIR/distribution.cer" -out "$SIGNING_DIR/distribution.pem"
+          openssl pkcs12 -export -legacy \
+            -inkey "$SIGNING_DIR/distribution.key" \
+            -in "$SIGNING_DIR/distribution.pem" \
+            -out "$SIGNING_DIR/distribution.p12" \
+            -passout pass:"$P12_PASSWORD" \
+            -name "Gaotus AppForge Apple Distribution"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security import "$SIGNING_DIR/distribution.p12" -k "$KEYCHAIN_PATH" -P "$P12_PASSWORD" -A
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$SIGNING_DIR/appstore.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          security cms -D -i "$SIGNING_DIR/appstore.mobileprovision" > "$SIGNING_DIR/appstore-profile.plist"
+          plutil -lint "$SIGNING_DIR/appstore-profile.plist"
+          echo "APPFORGE_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "APPFORGE_PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "APPFORGE_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+      - name: Archive signed iOS app
+        if: ${{ inputs.ios_distribution == 'testflight' || inputs.ios_distribution == 'both' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ios/App
+          xcodebuild \
+            -project App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath ../../build/testflight/App.xcarchive \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$APPFORGE_PROFILE_NAME" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $APPFORGE_KEYCHAIN_PATH" \
+            archive
+      - name: Verify signed iOS archive
+        if: ${{ inputs.ios_distribution == 'testflight' || inputs.ios_distribution == 'both' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="build/testflight/App.xcarchive/Products/Applications/App.app"
+          EXPECTED_ID="$(node -p "require('./generated-client.json').appId")"
+          test -d "$APP"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = "$EXPECTED_ID"
+          codesign --verify --deep --strict "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | tee build/testflight/codesign.txt
+          test -f "$APP/embedded.mobileprovision"
+          security cms -D -i "$APP/embedded.mobileprovision" > build/testflight/archive-profile.plist
+          plutil -lint build/testflight/archive-profile.plist
+      - name: Create App Store export options
+        if: ${{ inputs.ios_distribution == 'testflight' || inputs.ios_distribution == 'both' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/testflight/export
+          APP_ID="$(node -p "require('./generated-client.json').appId")"
+          cat > build/testflight/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>stripSwiftSymbols</key><true/>
+            <key>uploadSymbols</key><true/>
+            <key>provisioningProfiles</key><dict>
+              <key>${APP_ID}</key><string>${APPFORGE_PROFILE_NAME}</string>
+            </dict>
+          </dict></plist>
+          PLIST
+          plutil -lint build/testflight/ExportOptions.plist
+      - name: Export signed IPA
+        if: ${{ inputs.ios_distribution == 'testflight' || inputs.ios_distribution == 'both' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/testflight/App.xcarchive \
+            -exportPath build/testflight/export \
+            -exportOptionsPlist build/testflight/ExportOptions.plist
+          IPA="$(find build/testflight/export -maxdepth 1 -name '*.ipa' -type f | head -1)"
+          test -n "$IPA"
+          test -s "$IPA"
+          cp "$IPA" build/testflight/AppForge-TestFlight.ipa
+          unzip -tqq build/testflight/AppForge-TestFlight.ipa
+          shasum -a 256 build/testflight/AppForge-TestFlight.ipa > build/testflight/AppForge-TestFlight.ipa.sha256
+      - name: Validate signed IPA with App Store Connect
+        if: ${{ inputs.ios_distribution == 'testflight' || inputs.ios_distribution == 'both' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun altool --validate-app \
+            -f build/testflight/AppForge-TestFlight.ipa \
+            -t ios \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --p8-file-path "$APP_STORE_CONNECT_KEY_PATH" \
+            --output-format json | tee build/testflight/altool-validate.json
+      - name: Upload signed IPA to TestFlight
+        if: ${{ inputs.ios_distribution == 'testflight' || inputs.ios_distribution == 'both' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun altool --upload-app \
+            -f build/testflight/AppForge-TestFlight.ipa \
+            -t ios \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --p8-file-path "$APP_STORE_CONNECT_KEY_PATH" \
+            --output-format json | tee build/testflight/altool-upload.json
+      - name: Wait for TestFlight processing
+        if: ${{ inputs.ios_distribution == 'testflight' || inputs.ios_distribution == 'both' }}
+        env:
+          TESTFLIGHT_POLL_TIMEOUT_SECONDS: "900"
+          TESTFLIGHT_POLL_INTERVAL_SECONDS: "20"
+        run: node scripts/apple-testflight-status.mjs clients/runtime-builder.json build/testflight/testflight-status.json
+      - name: Prepare verified signed IPA output
+        if: ${{ inputs.ios_distribution == 'testflight' || inputs.ios_distribution == 'both' }}
+        env:
+          BUILD_ID: ${{ inputs.build_id }}
+        run: node scripts/package-ios-testflight.mjs "$BUILD_ID" build/testflight/AppForge-TestFlight.ipa build/testflight/testflight-status.json
       - name: Stage iOS outputs
         uses: actions/upload-artifact@v4
         with:
@@ -186,6 +373,13 @@ jobs:
           path: appforge-mvp/dist-ios/
           if-no-files-found: error
           retention-days: 1
+      - name: Cleanup temporary Apple provisioning profile
+        if: ${{ always() && (inputs.ios_distribution == 'testflight' || inputs.ios_distribution == 'both') }}
+        shell: bash
+        run: |
+          node scripts/apple-signing-profile-cleanup.mjs build/testflight/signing/apple-signing-material.json || true
+          if [ -n "${APPFORGE_KEYCHAIN_PATH:-}" ]; then security delete-keychain "$APPFORGE_KEYCHAIN_PATH" 2>/dev/null || true; fi
+          rm -f "$APP_STORE_CONNECT_KEY_PATH" 2>/dev/null || true
 
   publish:
     if: ${{ always() && (needs.android.result == 'success' || needs.android.result == 'skipped') && (needs.ios.result == 'success' || needs.ios.result == 'skipped') }}
@@ -211,8 +405,15 @@ jobs:
             test -s "final-dist/${{ inputs.build_id }}.aab"
           fi
           if [ "${{ inputs.platform }}" = "ios" ] || [ "${{ inputs.platform }}" = "both" ]; then
-            test -s "final-dist/${{ inputs.build_id }}-ios-simulator.zip"
+            if [ "${{ inputs.ios_distribution }}" = "simulator" ] || [ "${{ inputs.ios_distribution }}" = "both" ]; then
+              test -s "final-dist/${{ inputs.build_id }}-ios-simulator.zip"
+            fi
+            if [ "${{ inputs.ios_distribution }}" = "testflight" ] || [ "${{ inputs.ios_distribution }}" = "both" ]; then
+              test -s "final-dist/${{ inputs.build_id }}.ipa"
+              test -s "final-dist/${{ inputs.build_id }}-testflight-status.json"
+            fi
             test -s "final-dist/${{ inputs.build_id }}-ios-verification.json"
+            test -s "final-dist/${{ inputs.build_id }}-ios-build-report.json"
           fi
       - name: Upload verified build artifact
         uses: actions/upload-artifact@v4
