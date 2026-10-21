@@ -26,15 +26,39 @@ fs.writeFileSync(projectPath, project);
 const permissions = client.permissions || {};
 let plist = fs.readFileSync(plistPath, 'utf8');
 const removePlistKey = (xml, key) => xml.replace(new RegExp(`\\s*<key>${key}<\\/key>\\s*<string>[\\s\\S]*?<\\/string>`, 'g'), '');
-const ensureStringKey = (xml, key, value) => {
-  if (xml.includes(`<key>${key}</key>`)) return xml;
-  return xml.replace('</dict>', `\n\t<key>${key}</key>\n\t<string>${String(value).replace(/[&<>]/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}</string>\n</dict>`);
+const escapeXml = (value) => String(value).replace(/[&<>]/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+const topLevelDictClose = (xml) => {
+  const start = xml.indexOf('<dict>');
+  if (start < 0) throw new Error('Info.plist root <dict> missing');
+  const token = /<dict>|<\/dict>/g;
+  token.lastIndex = start;
+  let depth = 0;
+  let match;
+  while ((match = token.exec(xml))) {
+    if (match[0] === '<dict>') depth += 1;
+    else {
+      depth -= 1;
+      if (depth === 0) return match.index;
+      if (depth < 0) break;
+    }
+  }
+  throw new Error('Info.plist root </dict> missing');
 };
-if (permissions.camera === true) plist = ensureStringKey(plist, 'NSCameraUsageDescription', `${client.appName} uses the camera when you request it.`);
+const ensureTopLevelStringKey = (xml, key, value) => {
+  // Capacitor's plist contains nested dictionaries. Always remove an existing
+  // managed key first, then insert it immediately before the ROOT dict closes.
+  // This prevents usage-description keys from accidentally landing inside
+  // UIApplicationSceneManifest or another nested dictionary.
+  const clean = removePlistKey(xml, key);
+  const close = topLevelDictClose(clean);
+  const block = `\n\t<key>${key}</key>\n\t<string>${escapeXml(value)}</string>`;
+  return clean.slice(0, close) + block + '\n' + clean.slice(close);
+};
+if (permissions.camera === true) plist = ensureTopLevelStringKey(plist, 'NSCameraUsageDescription', `${client.appName} uses the camera when you request it.`);
 else plist = removePlistKey(plist, 'NSCameraUsageDescription');
-if (permissions.location === true) plist = ensureStringKey(plist, 'NSLocationWhenInUseUsageDescription', `${client.appName} uses your location when you request it.`);
+if (permissions.location === true) plist = ensureTopLevelStringKey(plist, 'NSLocationWhenInUseUsageDescription', `${client.appName} uses your location when you request it.`);
 else plist = removePlistKey(plist, 'NSLocationWhenInUseUsageDescription');
-if (permissions.microphone === true) plist = ensureStringKey(plist, 'NSMicrophoneUsageDescription', `${client.appName} uses the microphone when you request it.`);
+if (permissions.microphone === true) plist = ensureTopLevelStringKey(plist, 'NSMicrophoneUsageDescription', `${client.appName} uses the microphone when you request it.`);
 else plist = removePlistKey(plist, 'NSMicrophoneUsageDescription');
 fs.writeFileSync(plistPath, plist);
 
