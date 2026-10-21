@@ -24,7 +24,7 @@ defaults:
 jobs:
   ios-simulator:
     runs-on: macos-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -68,18 +68,18 @@ jobs:
         run: node scripts/patch-ios-runtime.mjs
       - name: Verify iOS runtime
         run: node scripts/verify-ios-runtime.mjs
-      - name: Build simulator app without signing
+      - name: Build release simulator app without signing
         run: |
           cd ios/App
           if [ -f Podfile ]; then
             pod install
-            xcodebuild -workspace App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath ../../build/ios-sim CODE_SIGNING_ALLOWED=NO build
+            xcodebuild -workspace App.xcworkspace -scheme App -sdk iphonesimulator -configuration Release -derivedDataPath ../../build/ios-sim CODE_SIGNING_ALLOWED=NO build
           else
-            xcodebuild -project App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath ../../build/ios-sim CODE_SIGNING_ALLOWED=NO build
+            xcodebuild -project App.xcodeproj -scheme App -sdk iphonesimulator -configuration Release -derivedDataPath ../../build/ios-sim CODE_SIGNING_ALLOWED=NO build
           fi
       - name: Verify compiled simulator bundle
         run: |
-          APP="build/ios-sim/Build/Products/Debug-iphonesimulator/App.app"
+          APP="build/ios-sim/Build/Products/Release-iphonesimulator/App.app"
           test -d "$APP"
           test -s ios-runtime-verification.json
           plutil -lint ios/App/App/Info.plist
@@ -93,14 +93,48 @@ jobs:
             test -s ios-branding-verification.json
             node -e "const r=require('./ios-branding-verification.json'); if(!r.ok||!Array.isArray(r.generated)||!r.generated.length) process.exit(1); console.log('[AppForge] compiled custom icon contract verified', r.sourceSha256, r.generated.length)"
           fi
+      - name: Launch release app in iOS Simulator and fail on startup crash
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="build/ios-sim/Build/Products/Release-iphonesimulator/App.app"
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
+          UDID="$(xcrun simctl list devices available -j | node -e '
+            let s=""; process.stdin.on("data",d=>s+=d); process.stdin.on("end",()=>{
+              const j=JSON.parse(s); const rows=Object.values(j.devices||{}).flat();
+              const d=rows.find(x=>x && x.isAvailable && /^iPhone/.test(String(x.name||"")));
+              if(!d) process.exit(2); process.stdout.write(d.udid);
+            });')"
+          echo "[AppForge] launch smoke device=$UDID bundle=$BUNDLE_ID"
+          xcrun simctl boot "$UDID" >/dev/null 2>&1 || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl uninstall "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+          xcrun simctl install "$UDID" "$APP"
+          LAUNCH_OUT="$(xcrun simctl launch "$UDID" "$BUNDLE_ID")"
+          echo "$LAUNCH_OUT"
+          PID="$(printf '%s\n' "$LAUNCH_OUT" | awk -F': ' 'NF>1{print $NF}' | tail -1 | tr -dc '0-9')"
+          test -n "$PID"
+          sleep 12
+          if ! ps -p "$PID" >/dev/null 2>&1; then
+            mkdir -p build/ios-sim
+            xcrun simctl spawn "$UDID" log show --style compact --last 3m --predicate "process == 'App' OR process == 'SpringBoard'" > build/ios-sim/launch-crash.log 2>&1 || true
+            echo "[AppForge] release app exited during startup smoke"
+            tail -250 build/ios-sim/launch-crash.log || true
+            exit 1
+          fi
+          echo "[AppForge] release launch smoke PASS pid=$PID"
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
       - name: Package simulator test output
         run: |
           BUILD_ID="ios-${{ matrix.fixture }}"
           BUILD_ID="${BUILD_ID%.json}"
-          node scripts/package-ios-simulator.mjs "$BUILD_ID" build/ios-sim/Build/Products/Debug-iphonesimulator/App.app
+          node scripts/package-ios-simulator.mjs "$BUILD_ID" build/ios-sim/Build/Products/Release-iphonesimulator/App.app
       - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
         with:
           name: gaotus-appforge-ios-${{ matrix.fixture }}
-          path: appforge-mvp/dist-ios/
-          if-no-files-found: error
+          path: |
+            appforge-mvp/dist-ios/
+            appforge-mvp/build/ios-sim/launch-crash.log
+          if-no-files-found: warn
           retention-days: 7
