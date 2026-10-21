@@ -1,0 +1,255 @@
+name: AppForge iOS TestFlight Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["appforge-mvp"]
+    paths:
+      - ".github/workflows/ios-testflight-smoke.yml"
+      - "appforge-mvp/clients/gaotus-testflight-smoke.json"
+      - "appforge-mvp/scripts/apple-connect-preflight.mjs"
+      - "appforge-mvp/scripts/patch-ios-runtime.mjs"
+      - "appforge-mvp/scripts/verify-ios-runtime.mjs"
+      - "appforge-mvp/scripts/patch-native.mjs"
+      - "appforge-mvp/scripts/lib.mjs"
+
+defaults:
+  run:
+    working-directory: appforge-mvp
+
+jobs:
+  testflight:
+    runs-on: macos-latest
+    timeout-minutes: 55
+    permissions:
+      contents: read
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+      APP_STORE_CONNECT_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+    steps:
+      - name: Checkout factory source
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify Apple signing secrets are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$APPLE_TEAM_ID"
+          test -n "$APP_STORE_CONNECT_ISSUER_ID"
+          test -n "$APP_STORE_CONNECT_KEY_ID"
+          test -n "$APP_STORE_CONNECT_API_KEY_P8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_P8" > "$APP_STORE_CONNECT_KEY_PATH"
+          chmod 600 "$APP_STORE_CONNECT_KEY_PATH"
+          grep -q "BEGIN PRIVATE KEY" "$APP_STORE_CONNECT_KEY_PATH"
+          echo "[AppForge] Apple signing secrets are present."
+
+      - name: Install factory dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run factory contract tests
+        run: npm test
+
+      - name: Prepare unique TestFlight runtime config
+        env:
+          TESTFLIGHT_BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const c = JSON.parse(fs.readFileSync('clients/gaotus-testflight-smoke.json','utf8'));
+          c.versionCode = Number(process.env.TESTFLIGHT_BUILD_NUMBER || 1);
+          fs.writeFileSync('clients/runtime-testflight.json', JSON.stringify(c, null, 2) + '\n');
+          console.log(`[AppForge] TestFlight version ${c.versionName} (${c.versionCode}) for ${c.appId}`);
+          NODE
+
+      - name: Verify App Store Connect and register Bundle ID if needed
+        env:
+          APPLE_REGISTER_BUNDLE_ID: "true"
+          APPLE_REQUIRE_APP_RECORD: "true"
+        run: node scripts/apple-connect-preflight.mjs clients/runtime-testflight.json
+
+      - name: Validate iOS config and generate feature plan
+        run: node scripts/generate-client.mjs clients/runtime-testflight.json
+
+      - name: Add clean iOS platform
+        run: npx cap add ios
+
+      - name: Sync iOS Capacitor shell
+        run: npx cap sync ios
+
+      - name: Apply iOS native bridge
+        run: node scripts/patch-native.mjs ios
+
+      - name: Apply canonical iOS runtime
+        run: node scripts/patch-ios-runtime.mjs
+
+      - name: Verify iOS native runtime
+        run: node scripts/verify-ios-runtime.mjs
+
+      - name: Set App Store export compliance declaration
+        run: |
+          /usr/libexec/PlistBuddy -c "Delete :ITSAppUsesNonExemptEncryption" ios/App/App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" ios/App/App/Info.plist
+          plutil -lint ios/App/App/Info.plist
+
+      - name: Archive signed iOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ios/App
+          COMMON=(
+            -scheme App
+            -configuration Release
+            -destination 'generic/platform=iOS'
+            -archivePath ../../build/testflight/App.xcarchive
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
+            CODE_SIGN_STYLE=Automatic
+            -allowProvisioningUpdates
+            -authenticationKeyPath "$APP_STORE_CONNECT_KEY_PATH"
+            -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID"
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
+            archive
+          )
+          if [ -f Podfile ]; then
+            pod install
+            xcodebuild -workspace App.xcworkspace "${COMMON[@]}"
+          else
+            xcodebuild -project App.xcodeproj "${COMMON[@]}"
+          fi
+
+      - name: Verify archive identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="build/testflight/App.xcarchive/Products/Applications/App.app"
+          test -d "$APP"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = "ai.gaotus.gaotus4509.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")" = "0.1.0"
+          test -n "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")"
+          codesign --verify --deep --strict "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | tee build/testflight/codesign.txt
+
+      - name: Create App Store export options
+        shell: bash
+        run: |
+          cat > build/testflight/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>destination</key>
+            <string>export</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>teamID</key>
+            <string>${APPLE_TEAM_ID}</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+          plutil -lint build/testflight/ExportOptions.plist
+
+      - name: Export signed IPA with Apple cloud signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/testflight/export
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/testflight/App.xcarchive \
+            -exportPath build/testflight/export \
+            -exportOptionsPlist build/testflight/ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$APP_STORE_CONNECT_KEY_PATH" \
+            -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
+
+      - name: Verify signed IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA=$(find build/testflight/export -maxdepth 1 -name '*.ipa' -type f | head -1)
+          test -n "$IPA"
+          test -s "$IPA"
+          unzip -tqq "$IPA"
+          rm -rf build/testflight/ipa-check
+          mkdir -p build/testflight/ipa-check
+          unzip -q "$IPA" -d build/testflight/ipa-check
+          APP=$(find build/testflight/ipa-check/Payload -maxdepth 1 -name '*.app' -type d | head -1)
+          test -n "$APP"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = "ai.gaotus.gaotus4509.app"
+          codesign --verify --deep --strict "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | tee build/testflight/exported-codesign.txt
+          if [ -f "$APP/embedded.mobileprovision" ]; then
+            security cms -D -i "$APP/embedded.mobileprovision" > build/testflight/embedded-profile.plist
+            plutil -lint build/testflight/embedded-profile.plist
+          fi
+          cp "$IPA" build/testflight/Gaotus-TestFlight.ipa
+          shasum -a 256 build/testflight/Gaotus-TestFlight.ipa > build/testflight/Gaotus-TestFlight.ipa.sha256
+
+      - name: Validate IPA with App Store Connect
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun altool \
+            --validate-app \
+            -f build/testflight/Gaotus-TestFlight.ipa \
+            -t ios \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --p8-file-path "$APP_STORE_CONNECT_KEY_PATH" \
+            --output-format json | tee build/testflight/altool-validate.json
+
+      - name: Upload IPA to TestFlight
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun altool \
+            --upload-app \
+            -f build/testflight/Gaotus-TestFlight.ipa \
+            -t ios \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --p8-file-path "$APP_STORE_CONNECT_KEY_PATH" \
+            --output-format json | tee build/testflight/altool-upload.json
+
+      - name: Package TestFlight evidence
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          mkdir -p build/testflight/evidence
+          cp apple-connect-preflight.json build/testflight/evidence/ 2>/dev/null || true
+          cp ios-runtime-verification.json build/testflight/evidence/ 2>/dev/null || true
+          cp generated-feature-plan.json build/testflight/evidence/ 2>/dev/null || true
+          cp generated-client.json build/testflight/evidence/ 2>/dev/null || true
+          cp build/testflight/Gaotus-TestFlight.ipa.sha256 build/testflight/evidence/ 2>/dev/null || true
+          cp build/testflight/codesign.txt build/testflight/evidence/ 2>/dev/null || true
+          cp build/testflight/exported-codesign.txt build/testflight/evidence/ 2>/dev/null || true
+          cp build/testflight/altool-validate.json build/testflight/evidence/ 2>/dev/null || true
+          cp build/testflight/altool-upload.json build/testflight/evidence/ 2>/dev/null || true
+
+      - name: Upload signed IPA artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gaotus-appforge-testflight-smoke
+          path: |
+            appforge-mvp/build/testflight/Gaotus-TestFlight.ipa
+            appforge-mvp/build/testflight/Gaotus-TestFlight.ipa.sha256
+            appforge-mvp/build/testflight/evidence/
+          if-no-files-found: warn
+          retention-days: 7
