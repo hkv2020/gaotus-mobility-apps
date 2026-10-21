@@ -11,6 +11,7 @@ on:
       - "appforge-mvp/scripts/patch-native.mjs"
       - "appforge-mvp/scripts/lib.mjs"
       - "appforge-mvp/clients/ui-smoke.json"
+      - "appforge-mvp/clients/ios-permissions-smoke.json"
       - ".github/workflows/ios-smoke.yml"
 
 defaults:
@@ -21,6 +22,12 @@ jobs:
   ios-simulator:
     runs-on: macos-latest
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture:
+          - ui-smoke.json
+          - ios-permissions-smoke.json
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,7 +38,7 @@ jobs:
       - name: Run factory contract tests
         run: npm test
       - name: Generate iOS smoke config
-        run: node scripts/generate-client.mjs clients/ui-smoke.json
+        run: node scripts/generate-client.mjs clients/${{ matrix.fixture }}
       - name: Add iOS platform
         run: npx cap add ios
       - name: Sync iOS shell
@@ -56,11 +63,20 @@ jobs:
           test -d build/ios-sim/Build/Products/Debug-iphonesimulator/App.app
           test -s ios-runtime-verification.json
           plutil -lint ios/App/App/Info.plist
+          plutil -lint build/ios-sim/Build/Products/Debug-iphonesimulator/App.app/Info.plist
+          if [ "${{ matrix.fixture }}" = "ios-permissions-smoke.json" ]; then
+            plutil -extract NSCameraUsageDescription raw -o - build/ios-sim/Build/Products/Debug-iphonesimulator/App.app/Info.plist >/dev/null
+            plutil -extract NSLocationWhenInUseUsageDescription raw -o - build/ios-sim/Build/Products/Debug-iphonesimulator/App.app/Info.plist >/dev/null
+            plutil -extract NSMicrophoneUsageDescription raw -o - build/ios-sim/Build/Products/Debug-iphonesimulator/App.app/Info.plist >/dev/null
+          fi
       - name: Package simulator test output
-        run: node scripts/package-ios-simulator.mjs ios-smoke build/ios-sim/Build/Products/Debug-iphonesimulator/App.app
+        run: |
+          BUILD_ID="ios-${{ matrix.fixture }}"
+          BUILD_ID="${BUILD_ID%.json}"
+          node scripts/package-ios-simulator.mjs "$BUILD_ID" build/ios-sim/Build/Products/Debug-iphonesimulator/App.app
       - uses: actions/upload-artifact@v4
         with:
-          name: gaotus-appforge-ios-smoke
+          name: gaotus-appforge-ios-${{ matrix.fixture }}
           path: appforge-mvp/dist-ios/
           if-no-files-found: error
           retention-days: 7
