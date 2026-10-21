@@ -18,6 +18,29 @@ const project = fs.readFileSync(projectPath, 'utf8');
 const host = client.mode === 'remote' ? new URL(client.url).hostname : 'localhost';
 const permissions = client.permissions || {};
 const direction = client.localisation?.rtl === true ? 'rtl' : 'ltr';
+
+const plistKeyDepths = (xml, wantedKey) => {
+  const depths = [];
+  const token = /<dict>|<\/dict>|<key>([^<]+)<\/key>/g;
+  let depth = 0;
+  let match;
+  while ((match = token.exec(xml))) {
+    if (match[0] === '<dict>') depth += 1;
+    else if (match[0] === '</dict>') depth -= 1;
+    else if (match[1] === wantedKey) depths.push(depth);
+  }
+  return depths;
+};
+const expectPermissionKey = (key, enabled, label) => {
+  const depths = plistKeyDepths(plist, key);
+  if (enabled) {
+    expect(depths.length === 1, `${label} usage description must exist exactly once`);
+    expect(depths.length === 1 && depths[0] === 1, `${label} usage description must be a top-level Info.plist key`);
+  } else {
+    expect(depths.length === 0, `${label} usage description must be absent when permission is disabled`);
+  }
+};
+
 expect(project.includes(`PRODUCT_BUNDLE_IDENTIFIER = ${client.appId};`), 'Bundle identifier mismatch');
 expect(project.includes(`MARKETING_VERSION = ${client.versionName};`), 'Marketing version mismatch');
 expect(project.includes(`CURRENT_PROJECT_VERSION = ${client.versionCode};`), 'Build number mismatch');
@@ -32,9 +55,9 @@ const directionPatterns = [
   `document.documentElement.dir = ${JSON.stringify(direction)}`
 ];
 expect(directionPatterns.some((pattern) => scene.includes(pattern)), `LTR/RTL runtime mismatch (expected ${direction})`);
-expect(plist.includes('<key>NSCameraUsageDescription</key>') === (permissions.camera === true), 'Camera usage description mismatch');
-expect(plist.includes('<key>NSLocationWhenInUseUsageDescription</key>') === (permissions.location === true), 'Location usage description mismatch');
-expect(plist.includes('<key>NSMicrophoneUsageDescription</key>') === (permissions.microphone === true), 'Microphone usage description mismatch');
+expectPermissionKey('NSCameraUsageDescription', permissions.camera === true, 'Camera');
+expectPermissionKey('NSLocationWhenInUseUsageDescription', permissions.location === true, 'Location');
+expectPermissionKey('NSMicrophoneUsageDescription', permissions.microphone === true, 'Microphone');
 if (errors.length) {
   console.error('[AppForge] iOS runtime verification FAILED');
   for (const error of errors) console.error(` - ${error}`);
@@ -54,6 +77,7 @@ const report = {
     trustedNativeSdk: true,
     environmentInjection: true,
     localisationDirection: true,
+    permissionDescriptionsTopLevel: true,
     share: true,
     haptics: true,
     externalLinks: true,
