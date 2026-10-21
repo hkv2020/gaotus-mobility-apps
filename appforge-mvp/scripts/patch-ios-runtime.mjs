@@ -220,4 +220,11 @@ if (missingCases.length) {
   scene = scene.replace(switchMarker, `        switch action {\n${missingCases.join('')}        case "share":`);
 }
 fs.writeFileSync(scenePath, scene);
-console.log('[AppForge] iOS runtime patched', JSON.stringify({appId:client.appId, versionName:client.versionName, versionCode:client.versionCode, rtl, safeAreaTop:true, brandedIcon:Boolean(client.iconUrl), camera:permissions.camera===true, location:permissions.location===true, microphone:permissions.microphone===true}));
+
+// This is part of the canonical patch chain, not an optional workflow-only step.
+// Remote WKWebView content can reach protected web APIs even when a native feature
+// toggle is off, so ensure the final app cannot be terminated by iOS for a missing
+// purpose string.
+await import('./harden-ios-web-privacy.mjs');
+
+console.log('[AppForge] iOS runtime patched', JSON.stringify({appId:client.appId, versionName:client.versionName, versionCode:client.versionCode, rtl, safeAreaTop:true, brandedIcon:Boolean(client.iconUrl), camera:permissions.camera===true, location:permissions.location===true, microphone:permissions.microphone===true, remoteWebPrivacyHardened:client.mode==='remote'}));
