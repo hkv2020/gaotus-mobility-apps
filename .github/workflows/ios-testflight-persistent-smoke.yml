@@ -1,0 +1,177 @@
+name: AppForge iOS Persistent TestFlight Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["appforge-mvp"]
+    paths:
+      - ".github/workflows/ios-testflight-persistent-smoke.yml"
+
+concurrency:
+  group: appforge-ios-persistent-testflight-smoke
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: appforge-mvp
+
+jobs:
+  persistent-testflight:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+      APP_STORE_CONNECT_KEY_PATH: /tmp/appforge-AuthKey.p8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install factory dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run factory contract tests
+        run: npm test
+      - name: Prepare unique TestFlight config
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const c=JSON.parse(fs.readFileSync('clients/gaotus-testflight-smoke.json','utf8'));
+          c.versionCode=Math.floor(Date.now()/1000);
+          fs.writeFileSync('clients/runtime-persistent-testflight.json',JSON.stringify(c,null,2)+'\n');
+          console.log(`[AppForge] persistent TestFlight smoke ${c.appId} ${c.versionName} (${c.versionCode})`);
+          NODE
+      - name: Prepare Apple API key
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$APPLE_TEAM_ID"
+          test -n "$APP_STORE_CONNECT_ISSUER_ID"
+          test -n "$APP_STORE_CONNECT_KEY_ID"
+          test -n "$APP_STORE_CONNECT_API_KEY_P8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_P8" > "$APP_STORE_CONNECT_KEY_PATH"
+          chmod 600 "$APP_STORE_CONNECT_KEY_PATH"
+          grep -q "BEGIN PRIVATE KEY" "$APP_STORE_CONNECT_KEY_PATH"
+      - name: Verify Apple app record
+        env:
+          APPLE_REGISTER_BUNDLE_ID: "true"
+          APPLE_REQUIRE_APP_RECORD: "true"
+        run: node scripts/apple-connect-preflight.mjs clients/runtime-persistent-testflight.json
+      - name: Generate and patch iOS client
+        run: |
+          node scripts/generate-client.mjs clients/runtime-persistent-testflight.json
+          npx cap add ios
+          npx cap sync ios
+          node scripts/patch-native.mjs ios
+          node scripts/patch-ios-runtime.mjs
+          node scripts/verify-ios-runtime.mjs
+          /usr/libexec/PlistBuddy -c "Delete :ITSAppUsesNonExemptEncryption" ios/App/App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" ios/App/App/Info.plist
+          plutil -lint ios/App/App/Info.plist
+      - name: Materialize persistent signing identity
+        run: node scripts/apple-signing-materialize.mjs clients/runtime-persistent-testflight.json signing/apple-distribution.enc.json build/testflight/signing
+      - name: Install signing identity and profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIGNING_DIR="$PWD/build/testflight/signing"
+          KEYCHAIN_PATH="$RUNNER_TEMP/appforge-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          P12_PASSWORD="$(openssl rand -hex 24)"
+          PROFILE_UUID="$(node -p "JSON.parse(require('fs').readFileSync('$SIGNING_DIR/apple-signing-material.json','utf8')).profileUuid")"
+          PROFILE_NAME="$(node -p "JSON.parse(require('fs').readFileSync('$SIGNING_DIR/apple-signing-material.json','utf8')).profileName")"
+          CERT_ID="$(node -p "JSON.parse(require('fs').readFileSync('$SIGNING_DIR/apple-signing-material.json','utf8')).certificateId")"
+          test -n "$CERT_ID"
+          openssl x509 -inform DER -in "$SIGNING_DIR/distribution.cer" -out "$SIGNING_DIR/distribution.pem"
+          openssl pkcs12 -export -legacy -inkey "$SIGNING_DIR/distribution.key" -in "$SIGNING_DIR/distribution.pem" -out "$SIGNING_DIR/distribution.p12" -passout pass:"$P12_PASSWORD" -name "Gaotus AppForge Apple Distribution"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security import "$SIGNING_DIR/distribution.p12" -k "$KEYCHAIN_PATH" -P "$P12_PASSWORD" -A
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$SIGNING_DIR/appstore.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          echo "APPFORGE_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "APPFORGE_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "APPFORGE_CERT_ID=$CERT_ID" >> "$GITHUB_ENV"
+      - name: Archive signed release with persistent certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ios/App
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' -archivePath ../../build/testflight/App.xcarchive DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" PROVISIONING_PROFILE_SPECIFIER="$APPFORGE_PROFILE_NAME" OTHER_CODE_SIGN_FLAGS="--keychain $APPFORGE_KEYCHAIN_PATH" archive
+      - name: Verify signed archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="build/testflight/App.xcarchive/Products/Applications/App.app"
+          test -d "$APP"
+          codesign --verify --deep --strict "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | tee build/testflight/codesign.txt
+      - name: Export signed IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/testflight/export
+          APP_ID="$(node -p "require('./generated-client.json').appId")"
+          cat > build/testflight/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>provisioningProfiles</key><dict><key>${APP_ID}</key><string>${APPFORGE_PROFILE_NAME}</string></dict>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath build/testflight/App.xcarchive -exportPath build/testflight/export -exportOptionsPlist build/testflight/ExportOptions.plist
+          IPA="$(find build/testflight/export -maxdepth 1 -name '*.ipa' -type f | head -1)"
+          test -s "$IPA"
+          cp "$IPA" build/testflight/AppForge-Persistent-Smoke.ipa
+          unzip -tqq build/testflight/AppForge-Persistent-Smoke.ipa
+      - name: Validate IPA with Apple
+        shell: bash
+        run: xcrun altool --validate-app -f build/testflight/AppForge-Persistent-Smoke.ipa -t ios --apiKey "$APP_STORE_CONNECT_KEY_ID" --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" --p8-file-path "$APP_STORE_CONNECT_KEY_PATH" --output-format json | tee build/testflight/altool-validate.json
+      - name: Upload IPA to TestFlight
+        shell: bash
+        run: xcrun altool --upload-app -f build/testflight/AppForge-Persistent-Smoke.ipa -t ios --apiKey "$APP_STORE_CONNECT_KEY_ID" --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" --p8-file-path "$APP_STORE_CONNECT_KEY_PATH" --output-format json | tee build/testflight/altool-upload.json
+      - name: Wait for Apple TestFlight processing
+        env:
+          TESTFLIGHT_POLL_TIMEOUT_SECONDS: "900"
+          TESTFLIGHT_POLL_INTERVAL_SECONDS: "20"
+        run: node scripts/apple-testflight-status.mjs clients/runtime-persistent-testflight.json build/testflight/testflight-status.json
+      - name: Verify persistent certificate was reused, not revoked
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/apple-signing-materialize.mjs clients/runtime-persistent-testflight.json signing/apple-distribution.enc.json build/postcheck-signing
+          POST_CERT="$(node -p "JSON.parse(require('fs').readFileSync('build/postcheck-signing/apple-signing-material.json','utf8')).certificateId")"
+          test "$POST_CERT" = "$APPFORGE_CERT_ID"
+          node scripts/apple-signing-profile-cleanup.mjs build/postcheck-signing/apple-signing-material.json
+      - name: Upload smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: gaotus-ios-persistent-testflight-smoke
+          path: |
+            appforge-mvp/build/testflight/AppForge-Persistent-Smoke.ipa
+            appforge-mvp/build/testflight/testflight-status.json
+            appforge-mvp/build/testflight/codesign.txt
+            appforge-mvp/build/testflight/altool-validate.json
+            appforge-mvp/build/testflight/altool-upload.json
+            appforge-mvp/build/testflight/signing/apple-signing-material.json
+            appforge-mvp/ios-runtime-verification.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Cleanup temporary profile and keychain only
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          node scripts/apple-signing-profile-cleanup.mjs build/testflight/signing/apple-signing-material.json || true
+          if [ -n "${APPFORGE_KEYCHAIN_PATH:-}" ]; then security delete-keychain "$APPFORGE_KEYCHAIN_PATH" 2>/dev/null || true; fi
+          rm -f "$APP_STORE_CONNECT_KEY_PATH" 2>/dev/null || true
