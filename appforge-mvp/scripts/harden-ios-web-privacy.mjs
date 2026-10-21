@@ -6,6 +6,11 @@ const client = validateClient(readJSON(path.join(rootDir, 'generated-client.json
 const plistPath = path.join(rootDir, 'ios', 'App', 'App', 'Info.plist');
 if (!fs.existsSync(plistPath)) throw new Error(`Info.plist missing: ${plistPath}`);
 
+// Safe-area hardening is part of the canonical iOS patch chain for every mode.
+// It removes the v0.8.1 CAPBridgeViewController layout feedback loop before the
+// privacy-specific remote-web checks below run.
+await import('./fix-ios-safe-area-watchdog.mjs');
+
 // Remote web content can call browser capture/geolocation APIs independently of the
 // AppForge native-feature toggles. iOS raises an exception if protected APIs are
 // reached without the matching purpose string. Until AppForge enforces those web
