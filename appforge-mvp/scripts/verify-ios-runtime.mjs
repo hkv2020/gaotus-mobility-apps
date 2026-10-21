@@ -51,9 +51,33 @@ expect(scene.includes(`allowedHost = \"${host}\"`), 'Allowed host mismatch');
 expect(scene.includes('webView.configuration.userContentController.add(handler, name: "gaotusNative")'), 'Native message handler missing');
 expect(scene.includes('window.GaotusNative'), 'Trusted page GaotusNative SDK missing');
 expect(scene.includes('window.GaotusEnv'), 'Trusted page environment injection missing');
-expect(scene.includes('override func viewDidLayoutSubviews()'), 'Native iOS safe-area layout override missing');
-expect(scene.includes('gaotusSafeAreaTopInset = view.safeAreaInsets.top'), 'Native iOS top safe-area inset missing');
-expect(scene.includes('webView.frame = gaotusSafeAreaFrame'), 'Native iOS safe-area WebView frame application missing');
+
+// Crash-specific safe-area contract: never query/reframe CAPBridgeViewController's
+// WKWebView from viewDidLayoutSubviews. Safe-area ownership lives in a stable parent
+// container so UIKit can resolve scene/status-bar geometry without a feedback loop.
+expect(!scene.includes('gaotusSafeAreaTopInset'), 'Unsafe v0.8.1 direct safe-area inset read is still present');
+expect(!scene.includes('webView.frame = gaotusSafeAreaFrame'), 'Unsafe v0.8.1 WebView frame mutation is still present');
+expect(!/override func viewDidLayoutSubviews\(\)[\s\S]*?view\.safeAreaInsets/.test(scene), 'CAPBridgeViewController must not read safeAreaInsets from viewDidLayoutSubviews');
+expect(scene.includes('final class GaotusSafeAreaContainerViewController: UIViewController'), 'Watchdog-safe iOS safe-area container missing');
+expect(scene.includes('contentView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)'), 'Watchdog-safe top safe-area constraint missing');
+expect(scene.includes('window.rootViewController = GaotusSafeAreaContainerViewController(content: GaotusViewController())'), 'Scene root is not bound to watchdog-safe safe-area container');
+expect(scene.includes('override var childForStatusBarStyle: UIViewController? { content }'), 'Status-bar style forwarding missing');
+expect(scene.includes('override var childForStatusBarHidden: UIViewController? { content }'), 'Status-bar visibility forwarding missing');
+const safeAreaReportPath = path.join(rootDir, 'ios-safe-area-watchdog-verification.json');
+expect(fs.existsSync(safeAreaReportPath), 'iOS watchdog-safe safe-area verification report is missing');
+if (fs.existsSync(safeAreaReportPath)) {
+  try {
+    const safeArea = readJSON(safeAreaReportPath);
+    expect(safeArea.ok === true, 'iOS watchdog-safe safe-area verification report is not OK');
+    expect(safeArea.mode === 'watchdog-safe-container', 'iOS safe-area verification mode mismatch');
+    expect(safeArea.directSafeAreaReadsInLayoutOverride === false, 'Unsafe direct safe-area reads must be disabled');
+    expect(safeArea.webViewFrameMutationInLayoutOverride === false, 'Unsafe WebView frame mutation must be disabled');
+    expect(safeArea.rootContainerInstalled === true, 'Watchdog-safe root container was not confirmed');
+  } catch (error) {
+    errors.push(`Invalid iOS watchdog-safe safe-area report: ${error.message}`);
+  }
+}
+
 const directionPatterns = [
   `document.documentElement.dir = \"${direction}\"`,
   `document.documentElement.dir = \\\"${direction}\\\"`,
@@ -125,6 +149,8 @@ const report = {
     environmentInjection: true,
     localisationDirection: true,
     nativeSafeAreaTop: true,
+    watchdogSafeAreaContainer: true,
+    legacySafeAreaLayoutLoopAbsent: true,
     customAppIcon: brandingVerified,
     permissionDescriptionsTopLevel: true,
     remoteWebPrivacySafePurposeStrings: remotePrivacySafe,
