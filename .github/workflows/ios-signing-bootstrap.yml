@@ -1,0 +1,69 @@
+name: AppForge iOS Persistent Signing Bootstrap
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["appforge-mvp"]
+    paths:
+      - ".github/workflows/ios-signing-bootstrap.yml"
+
+concurrency:
+  group: appforge-ios-signing-bootstrap
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: appforge-mvp
+
+jobs:
+  bootstrap:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+      APP_STORE_CONNECT_KEY_PATH: /tmp/appforge-AuthKey.p8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prepare Apple API key
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$APP_STORE_CONNECT_ISSUER_ID"
+          test -n "$APP_STORE_CONNECT_KEY_ID"
+          test -n "$APP_STORE_CONNECT_API_KEY_P8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_P8" > "$APP_STORE_CONNECT_KEY_PATH"
+          chmod 600 "$APP_STORE_CONNECT_KEY_PATH"
+          grep -q "BEGIN PRIVATE KEY" "$APP_STORE_CONNECT_KEY_PATH"
+      - name: Generate persistent distribution private key and CSR
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/signing-bootstrap
+          openssl genrsa -out build/signing-bootstrap/distribution.key 2048
+          chmod 600 build/signing-bootstrap/distribution.key
+          openssl req -new -sha256 \
+            -key build/signing-bootstrap/distribution.key \
+            -out build/signing-bootstrap/distribution.csr \
+            -subj "/CN=Gaotus AppForge Persistent Distribution/O=Gaotus/C=GB"
+      - name: Create and encrypt persistent Apple Distribution identity
+        run: node scripts/apple-signing-bootstrap.mjs build/signing-bootstrap/distribution.csr build/signing-bootstrap/distribution.key build/signing-bootstrap/apple-distribution.enc.json
+      - name: Verify encrypted envelope only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s build/signing-bootstrap/apple-distribution.enc.json
+          grep -q 'AES-256-GCM' build/signing-bootstrap/apple-distribution.enc.json
+          ! grep -q 'BEGIN PRIVATE KEY' build/signing-bootstrap/apple-distribution.enc.json
+          rm -f build/signing-bootstrap/distribution.key build/signing-bootstrap/distribution.csr
+      - name: Upload encrypted signing identity
+        uses: actions/upload-artifact@v4
+        with:
+          name: appforge-ios-persistent-signing-identity
+          path: appforge-mvp/build/signing-bootstrap/apple-distribution.enc.json
+          if-no-files-found: error
+          retention-days: 7
