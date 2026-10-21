@@ -110,7 +110,7 @@ jobs:
           PROFILE_NAME="$(node -p "JSON.parse(require('fs').readFileSync('$SIGNING_DIR/apple-signing-material.json','utf8')).profileName")"
 
           openssl x509 -inform DER -in "$SIGNING_DIR/distribution.cer" -out "$SIGNING_DIR/distribution.pem"
-          openssl pkcs12 -export \
+          openssl pkcs12 -export -legacy \
             -inkey "$SIGNING_DIR/distribution.key" \
             -in "$SIGNING_DIR/distribution.pem" \
             -out "$SIGNING_DIR/distribution.p12" \
