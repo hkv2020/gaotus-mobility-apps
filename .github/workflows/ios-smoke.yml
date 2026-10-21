@@ -9,9 +9,12 @@ on:
       - "appforge-mvp/scripts/verify-ios-runtime.mjs"
       - "appforge-mvp/scripts/package-ios-simulator.mjs"
       - "appforge-mvp/scripts/patch-native.mjs"
+      - "appforge-mvp/scripts/prepare-branding.mjs"
       - "appforge-mvp/scripts/lib.mjs"
       - "appforge-mvp/clients/ui-smoke.json"
       - "appforge-mvp/clients/ios-permissions-smoke.json"
+      - "appforge-mvp/clients/ios-branding-smoke.json"
+      - "appforge-mvp/test-assets/ios-branding-smoke.svg"
       - ".github/workflows/ios-smoke.yml"
 
 defaults:
@@ -28,6 +31,7 @@ jobs:
         fixture:
           - ui-smoke.json
           - ios-permissions-smoke.json
+          - ios-branding-smoke.json
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,6 +45,21 @@ jobs:
         run: node scripts/generate-client.mjs clients/${{ matrix.fixture }}
       - name: Add iOS platform
         run: npx cap add ios
+      - name: Detect custom branding
+        id: branding
+        shell: bash
+        run: |
+          ICON_URL="$(node -e "const c=require('./generated-client.json'); process.stdout.write(String(c.iconUrl||''))")"
+          if [ -n "$ICON_URL" ]; then echo "enabled=true" >> "$GITHUB_OUTPUT"; else echo "enabled=false" >> "$GITHUB_OUTPUT"; fi
+      - name: Install iOS branding tools
+        if: steps.branding.outputs.enabled == 'true'
+        run: npm install --no-save --no-audit --no-fund @capacitor/assets@3.0.5 sharp
+      - name: Prepare iOS branding source
+        if: steps.branding.outputs.enabled == 'true'
+        run: node scripts/prepare-branding.mjs
+      - name: Generate iOS AppIcon asset set
+        if: steps.branding.outputs.enabled == 'true'
+        run: npx capacitor-assets generate --ios
       - name: Sync iOS shell
         run: npx cap sync ios
       - name: Apply native bridge
@@ -60,14 +79,19 @@ jobs:
           fi
       - name: Verify compiled simulator bundle
         run: |
-          test -d build/ios-sim/Build/Products/Debug-iphonesimulator/App.app
+          APP="build/ios-sim/Build/Products/Debug-iphonesimulator/App.app"
+          test -d "$APP"
           test -s ios-runtime-verification.json
           plutil -lint ios/App/App/Info.plist
-          plutil -lint build/ios-sim/Build/Products/Debug-iphonesimulator/App.app/Info.plist
+          plutil -lint "$APP/Info.plist"
           if [ "${{ matrix.fixture }}" = "ios-permissions-smoke.json" ]; then
-            plutil -extract NSCameraUsageDescription raw -o - build/ios-sim/Build/Products/Debug-iphonesimulator/App.app/Info.plist >/dev/null
-            plutil -extract NSLocationWhenInUseUsageDescription raw -o - build/ios-sim/Build/Products/Debug-iphonesimulator/App.app/Info.plist >/dev/null
-            plutil -extract NSMicrophoneUsageDescription raw -o - build/ios-sim/Build/Products/Debug-iphonesimulator/App.app/Info.plist >/dev/null
+            plutil -extract NSCameraUsageDescription raw -o - "$APP/Info.plist" >/dev/null
+            plutil -extract NSLocationWhenInUseUsageDescription raw -o - "$APP/Info.plist" >/dev/null
+            plutil -extract NSMicrophoneUsageDescription raw -o - "$APP/Info.plist" >/dev/null
+          fi
+          if [ "${{ matrix.fixture }}" = "ios-branding-smoke.json" ]; then
+            test -s ios-branding-verification.json
+            node -e "const r=require('./ios-branding-verification.json'); if(!r.ok||!Array.isArray(r.generated)||!r.generated.length) process.exit(1); console.log('[AppForge] compiled custom icon contract verified', r.sourceSha256, r.generated.length)"
           fi
       - name: Package simulator test output
         run: |
