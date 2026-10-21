@@ -14,6 +14,7 @@ on:
       - "appforge-mvp/clients/ui-smoke.json"
       - "appforge-mvp/clients/ios-permissions-smoke.json"
       - "appforge-mvp/clients/ios-branding-smoke.json"
+      - "appforge-mvp/clients/gaotus-testflight-smoke.json"
       - "appforge-mvp/test-assets/ios-branding-smoke.svg"
       - ".github/workflows/ios-smoke.yml"
 
@@ -32,6 +33,7 @@ jobs:
           - ui-smoke.json
           - ios-permissions-smoke.json
           - ios-branding-smoke.json
+          - gaotus-testflight-smoke.json
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -114,12 +116,12 @@ jobs:
           echo "$LAUNCH_OUT"
           PID="$(printf '%s\n' "$LAUNCH_OUT" | awk -F': ' 'NF>1{print $NF}' | tail -1 | tr -dc '0-9')"
           test -n "$PID"
-          sleep 12
+          sleep 15
           if ! ps -p "$PID" >/dev/null 2>&1; then
             mkdir -p build/ios-sim
-            xcrun simctl spawn "$UDID" log show --style compact --last 3m --predicate "process == 'App' OR process == 'SpringBoard'" > build/ios-sim/launch-crash.log 2>&1 || true
+            xcrun simctl spawn "$UDID" log show --style compact --last 3m --predicate "process == 'App' OR process == 'SpringBoard' OR subsystem CONTAINS 'TCC'" > build/ios-sim/launch-crash.log 2>&1 || true
             echo "[AppForge] release app exited during startup smoke"
-            tail -250 build/ios-sim/launch-crash.log || true
+            tail -300 build/ios-sim/launch-crash.log || true
             exit 1
           fi
           echo "[AppForge] release launch smoke PASS pid=$PID"
