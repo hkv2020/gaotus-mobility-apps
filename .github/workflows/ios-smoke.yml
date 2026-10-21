@@ -7,6 +7,8 @@ on:
     paths:
       - "appforge-mvp/scripts/patch-ios-runtime.mjs"
       - "appforge-mvp/scripts/verify-ios-runtime.mjs"
+      - "appforge-mvp/scripts/harden-ios-web-privacy.mjs"
+      - "appforge-mvp/scripts/verify-ios-web-privacy.mjs"
       - "appforge-mvp/scripts/package-ios-simulator.mjs"
       - "appforge-mvp/scripts/patch-native.mjs"
       - "appforge-mvp/scripts/prepare-branding.mjs"
@@ -68,8 +70,12 @@ jobs:
         run: node scripts/patch-native.mjs ios
       - name: Apply canonical iOS runtime
         run: node scripts/patch-ios-runtime.mjs
-      - name: Verify iOS runtime
+      - name: Verify canonical iOS runtime
         run: node scripts/verify-ios-runtime.mjs
+      - name: Harden remote web privacy purpose strings
+        run: node scripts/harden-ios-web-privacy.mjs
+      - name: Verify final remote web privacy contract
+        run: node scripts/verify-ios-web-privacy.mjs
       - name: Build release simulator app without signing
         run: |
           cd ios/App
@@ -84,13 +90,12 @@ jobs:
           APP="build/ios-sim/Build/Products/Release-iphonesimulator/App.app"
           test -d "$APP"
           test -s ios-runtime-verification.json
+          test -s ios-web-privacy-hardening.json
           plutil -lint ios/App/App/Info.plist
           plutil -lint "$APP/Info.plist"
-          if [ "${{ matrix.fixture }}" = "ios-permissions-smoke.json" ]; then
-            plutil -extract NSCameraUsageDescription raw -o - "$APP/Info.plist" >/dev/null
-            plutil -extract NSLocationWhenInUseUsageDescription raw -o - "$APP/Info.plist" >/dev/null
-            plutil -extract NSMicrophoneUsageDescription raw -o - "$APP/Info.plist" >/dev/null
-          fi
+          plutil -extract NSCameraUsageDescription raw -o - "$APP/Info.plist" >/dev/null
+          plutil -extract NSLocationWhenInUseUsageDescription raw -o - "$APP/Info.plist" >/dev/null
+          plutil -extract NSMicrophoneUsageDescription raw -o - "$APP/Info.plist" >/dev/null
           if [ "${{ matrix.fixture }}" = "ios-branding-smoke.json" ]; then
             test -s ios-branding-verification.json
             node -e "const r=require('./ios-branding-verification.json'); if(!r.ok||!Array.isArray(r.generated)||!r.generated.length) process.exit(1); console.log('[AppForge] compiled custom icon contract verified', r.sourceSha256, r.generated.length)"
@@ -138,5 +143,6 @@ jobs:
           path: |
             appforge-mvp/dist-ios/
             appforge-mvp/build/ios-sim/launch-crash.log
+            appforge-mvp/ios-web-privacy-hardening.json
           if-no-files-found: warn
           retention-days: 7
