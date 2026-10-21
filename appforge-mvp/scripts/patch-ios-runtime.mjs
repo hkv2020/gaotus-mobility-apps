@@ -59,12 +59,32 @@ if (permissions.microphone === true) plist = ensureTopLevelStringKey(plist, 'NSM
 else plist = removePlistKey(plist, 'NSMicrophoneUsageDescription');
 fs.writeFileSync(plistPath, plist);
 
+function scrubAssetSet(setDir) {
+  const contentsPath = path.join(setDir, 'Contents.json');
+  if (!fs.existsSync(contentsPath)) return [];
+  const contents = JSON.parse(fs.readFileSync(contentsPath, 'utf8'));
+  const keep = new Set(['Contents.json']);
+  for (const row of Array.isArray(contents.images) ? contents.images : []) {
+    if (row && row.filename) keep.add(String(row.filename));
+  }
+  const removed = [];
+  for (const name of fs.readdirSync(setDir)) {
+    const full = path.join(setDir, name);
+    if (keep.has(name) || !fs.statSync(full).isFile()) continue;
+    if (!/\.(png|jpe?g)$/i.test(name)) continue;
+    fs.unlinkSync(full);
+    removed.push(name);
+  }
+  return removed;
+}
+
 async function applyIOSBranding() {
   const iconUrl = String(client.iconUrl || '').trim();
   if (!iconUrl) return null;
 
   const sourcePath = path.join(rootDir, 'assets', 'icon-only.png');
   const setDir = path.join(appDir, 'Assets.xcassets', 'AppIcon.appiconset');
+  const splashSetDir = path.join(appDir, 'Assets.xcassets', 'Splash.imageset');
   const contentsPath = path.join(setDir, 'Contents.json');
   if (!fs.existsSync(sourcePath)) throw new Error('Custom iOS icon was configured but assets/icon-only.png is missing');
   if (!fs.existsSync(contentsPath)) throw new Error('iOS AppIcon.appiconset/Contents.json is missing');
@@ -103,16 +123,22 @@ async function applyIOSBranding() {
     generated.push({ file: row.filename, pixels, sha256: crypto.createHash('sha256').update(fs.readFileSync(target)).digest('hex') });
   }
 
+  const removedAssets = [
+    ...scrubAssetSet(setDir).map((file) => `AppIcon.appiconset/${file}`),
+    ...scrubAssetSet(splashSetDir).map((file) => `Splash.imageset/${file}`)
+  ];
+
   const report = {
     ok: true,
     sourceUrl: iconUrl,
     sourceSha256: crypto.createHash('sha256').update(fs.readFileSync(sourcePath)).digest('hex'),
     appIconSet: path.relative(rootDir, setDir),
     generated,
+    removedAssets,
     verifiedAt: new Date().toISOString()
   };
   fs.writeFileSync(path.join(rootDir, 'ios-branding-verification.json'), JSON.stringify(report, null, 2) + '\n');
-  console.log('[AppForge] iOS AppIcon branding applied', JSON.stringify({ count: generated.length, sourceSha256: report.sourceSha256 }));
+  console.log('[AppForge] iOS AppIcon branding applied', JSON.stringify({ count: generated.length, removedAssets: removedAssets.length, sourceSha256: report.sourceSha256 }));
   return report;
 }
 
@@ -178,23 +204,20 @@ if (!scene.includes('gaotusSafeAreaTopInset')) {
   scene = scene.replace(deinitMarker, `${safeAreaMethod}\n${deinitMarker}`);
 }
 
-const extraCases = `
-        case "ping", "deviceInfo":
-            break
-        case "toast":
-            let message = payload["message"] as? String ?? ""
-            let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
-            vc.present(alert, animated: true)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { alert.dismiss(animated: true) }
-        case "copyToClipboard":
-            UIPasteboard.general.string = payload["text"] as? String ?? ""
-        case "openAppSettings":
-            if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
-`;
+const missingCases = [];
+if (!scene.includes('case "ping", "deviceInfo":')) {
+  missingCases.push('        case "ping", "deviceInfo":\n            break\n');
+}
 if (!scene.includes('case "copyToClipboard":')) {
+  missingCases.push('        case "copyToClipboard":\n            UIPasteboard.general.string = payload["text"] as? String ?? ""\n');
+}
+if (!scene.includes('case "openAppSettings":')) {
+  missingCases.push('        case "openAppSettings":\n            if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }\n');
+}
+if (missingCases.length) {
   const switchMarker = '        switch action {\n        case "share":';
   if (!scene.includes(switchMarker)) throw new Error('iOS bridge switch marker missing');
-  scene = scene.replace(switchMarker, `        switch action {${extraCases}        case "share":`);
+  scene = scene.replace(switchMarker, `        switch action {\n${missingCases.join('')}        case "share":`);
 }
 fs.writeFileSync(scenePath, scene);
 console.log('[AppForge] iOS runtime patched', JSON.stringify({appId:client.appId, versionName:client.versionName, versionCode:client.versionCode, rtl, safeAreaTop:true, brandedIcon:Boolean(client.iconUrl), camera:permissions.camera===true, location:permissions.location===true, microphone:permissions.microphone===true}));
