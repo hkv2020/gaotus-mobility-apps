@@ -18,6 +18,7 @@ const project = fs.readFileSync(projectPath, 'utf8');
 const host = client.mode === 'remote' ? new URL(client.url).hostname : 'localhost';
 const permissions = client.permissions || {};
 const direction = client.localisation?.rtl === true ? 'rtl' : 'ltr';
+const remotePrivacySafe = client.mode === 'remote';
 
 const plistKeyDepths = (xml, wantedKey) => {
   const depths = [];
@@ -36,8 +37,10 @@ const expectPermissionKey = (key, enabled, label) => {
   if (enabled) {
     expect(depths.length === 1, `${label} usage description must exist exactly once`);
     expect(depths.length === 1 && depths[0] === 1, `${label} usage description must be a top-level Info.plist key`);
+    const value = plist.match(new RegExp(`<key>${key}<\\/key>\\s*<string>([^<]+)<\\/string>`));
+    expect(Boolean(value && String(value[1] || '').trim()), `${label} usage description must be non-empty`);
   } else {
-    expect(depths.length === 0, `${label} usage description must be absent when permission is disabled`);
+    expect(depths.length === 0, `${label} usage description must be absent when permission is disabled in local mode`);
   }
 };
 
@@ -58,9 +61,27 @@ const directionPatterns = [
   `document.documentElement.dir = ${JSON.stringify(direction)}`
 ];
 expect(directionPatterns.some((pattern) => scene.includes(pattern)), `LTR/RTL runtime mismatch (expected ${direction})`);
-expectPermissionKey('NSCameraUsageDescription', permissions.camera === true, 'Camera');
-expectPermissionKey('NSLocationWhenInUseUsageDescription', permissions.location === true, 'Location');
-expectPermissionKey('NSMicrophoneUsageDescription', permissions.microphone === true, 'Microphone');
+
+// For remote wrappers, purpose strings are a safety boundary, not evidence that
+// permission is proactively requested. Remote website JS may reach camera,
+// microphone or location APIs independently of AppForge's native toggles.
+expectPermissionKey('NSCameraUsageDescription', remotePrivacySafe || permissions.camera === true, 'Camera');
+expectPermissionKey('NSLocationWhenInUseUsageDescription', remotePrivacySafe || permissions.location === true, 'Location');
+expectPermissionKey('NSMicrophoneUsageDescription', remotePrivacySafe || permissions.microphone === true, 'Microphone');
+if (remotePrivacySafe) {
+  const privacyReportPath = path.join(rootDir, 'ios-web-privacy-hardening.json');
+  expect(fs.existsSync(privacyReportPath), 'Remote iOS privacy hardening report is missing');
+  if (fs.existsSync(privacyReportPath)) {
+    try {
+      const privacy = readJSON(privacyReportPath);
+      expect(privacy.ok === true, 'Remote iOS privacy hardening report is not OK');
+      expect(privacy.bundleIdentifier === client.appId, 'Remote iOS privacy hardening bundle identifier mismatch');
+      expect(privacy.permissionRequestOnLaunch === false, 'Privacy hardening must not request protected permissions on launch');
+    } catch (error) {
+      errors.push(`Invalid remote iOS privacy hardening report: ${error.message}`);
+    }
+  }
+}
 
 let brandingVerified = !String(client.iconUrl || '').trim();
 if (String(client.iconUrl || '').trim()) {
@@ -106,6 +127,8 @@ const report = {
     nativeSafeAreaTop: true,
     customAppIcon: brandingVerified,
     permissionDescriptionsTopLevel: true,
+    remoteWebPrivacySafePurposeStrings: remotePrivacySafe,
+    permissionRequestOnLaunch: false,
     share: true,
     haptics: true,
     externalLinks: true,
