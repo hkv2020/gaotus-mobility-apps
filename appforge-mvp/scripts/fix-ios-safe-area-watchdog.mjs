@@ -70,6 +70,39 @@ if (!scene.includes('contentView.topAnchor.constraint(equalTo: view.safeAreaLayo
 if (!scene.includes('childForStatusBarStyle')) throw new Error('Status-bar style forwarding missing');
 
 fs.writeFileSync(scenePath, scene);
+
+// GitHub macOS runners occasionally leave simctl bootstatus waiting indefinitely.
+// Install a CI-only xcrun shim for subsequent workflow steps that bounds ONLY
+// `simctl bootstatus`; every other xcrun command delegates byte-for-byte to Apple.
+// This keeps TestFlight signing/upload untouched while making the startup gate fail
+// closed instead of hanging WordPress polling for the lifetime of the runner.
+let ciSimulatorBootGuardInstalled = false;
+if (process.env.GITHUB_ACTIONS === 'true' && process.env.GITHUB_PATH) {
+  const ciBin = path.join(rootDir, '.appforge-ci-bin');
+  const xcrunShim = path.join(ciBin, 'xcrun');
+  fs.mkdirSync(ciBin, { recursive: true });
+  fs.writeFileSync(xcrunShim, `#!/bin/bash
+set -euo pipefail
+if [ "\${1:-}" = "simctl" ] && [ "\${2:-}" = "bootstatus" ]; then
+  shift 2
+  exec /usr/bin/python3 - "$@" <<'PY'
+import subprocess, sys
+cmd = ['/usr/bin/xcrun', 'simctl', 'bootstatus', *sys.argv[1:]]
+try:
+    result = subprocess.run(cmd, timeout=180)
+    raise SystemExit(result.returncode)
+except subprocess.TimeoutExpired:
+    print('[AppForge] iOS Simulator bootstatus timed out after 180 seconds', file=sys.stderr)
+    raise SystemExit(124)
+PY
+fi
+exec /usr/bin/xcrun "$@"
+`);
+  fs.chmodSync(xcrunShim, 0o755);
+  fs.appendFileSync(process.env.GITHUB_PATH, ciBin + '\n');
+  ciSimulatorBootGuardInstalled = true;
+}
+
 const report = {
   ok: true,
   mode: 'watchdog-safe-container',
@@ -81,6 +114,8 @@ const report = {
   horizontalEdges: 'full-width',
   bottomEdge: 'full-height',
   statusBarForwarding: true,
+  ciSimulatorBootGuardInstalled,
+  ciSimulatorBootTimeoutSeconds: ciSimulatorBootGuardInstalled ? 180 : null,
   verifiedAt: new Date().toISOString()
 };
 fs.writeFileSync(path.join(rootDir, 'ios-safe-area-watchdog-verification.json'), JSON.stringify(report, null, 2) + '\n');
