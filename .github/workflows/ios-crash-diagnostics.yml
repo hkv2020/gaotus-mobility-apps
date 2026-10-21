@@ -1,0 +1,47 @@
+name: AppForge iOS Crash Diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["appforge-mvp"]
+    paths:
+      - "appforge-mvp/scripts/apple-testflight-crash-diagnostics.mjs"
+      - ".github/workflows/ios-crash-diagnostics.yml"
+
+defaults:
+  run:
+    working-directory: appforge-mvp
+
+jobs:
+  crash-diagnostics:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    env:
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+      APP_STORE_CONNECT_KEY_PATH: /tmp/appforge-AuthKey.p8
+    steps:
+      - name: Checkout factory source
+        uses: actions/checkout@v4
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prepare Apple API key
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$APP_STORE_CONNECT_ISSUER_ID"
+          test -n "$APP_STORE_CONNECT_KEY_ID"
+          test -n "$APP_STORE_CONNECT_API_KEY_P8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_P8" > "$APP_STORE_CONNECT_KEY_PATH"
+          chmod 600 "$APP_STORE_CONNECT_KEY_PATH"
+          grep -q "BEGIN PRIVATE KEY" "$APP_STORE_CONNECT_KEY_PATH"
+      - name: Fetch sanitized TestFlight crash diagnostics
+        run: node scripts/apple-testflight-crash-diagnostics.mjs clients/gaotus-testflight-smoke.json
+      - name: Print diagnostics report
+        shell: bash
+        run: |
+          test -s testflight-crash-diagnostics.json
+          node -e "const r=require('./testflight-crash-diagnostics.json'); console.log(JSON.stringify({checkedAt:r.checkedAt,bundleIdentifier:r.bundleIdentifier,crashSubmissionCount:r.crashSubmissionCount,latest:r.latest&&{createdDate:r.latest.createdDate,deviceModel:r.latest.deviceModel,osVersion:r.latest.osVersion,architecture:r.latest.architecture,appUptimeInMilliseconds:r.latest.appUptimeInMilliseconds,buildBundleId:r.latest.buildBundleId}},null,2))"
