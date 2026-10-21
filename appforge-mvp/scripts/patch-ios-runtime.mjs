@@ -78,13 +78,19 @@ async function applyIOSBranding() {
   const theme = /^#[0-9a-fA-F]{6}$/.test(String(client.themeColor || '')) ? String(client.themeColor) : '#111827';
   const generated = [];
   for (const row of images) {
-    const points = Number.parseFloat(String(row.size || '').split('x')[0]);
-    const scale = Number.parseFloat(String(row.scale || '').replace(/x$/i, ''));
-    if (!Number.isFinite(points) || points <= 0 || !Number.isFinite(scale) || scale <= 0) {
-      throw new Error(`Invalid iOS AppIcon size/scale for ${row.filename}`);
-    }
-    const pixels = Math.round(points * scale);
     const target = path.join(setDir, String(row.filename));
+    let pixels = 0;
+    if (fs.existsSync(target)) {
+      const existing = await sharp(target).metadata();
+      if (Number.isFinite(existing.width) && existing.width > 0 && existing.width === existing.height) pixels = existing.width;
+    }
+    if (!pixels) {
+      const points = Number.parseFloat(String(row.size || '').split('x')[0]);
+      const parsedScale = Number.parseFloat(String(row.scale || '1').replace(/x$/i, ''));
+      const scale = Number.isFinite(parsedScale) && parsedScale > 0 ? parsedScale : 1;
+      if (Number.isFinite(points) && points > 0) pixels = Math.round(points * scale);
+    }
+    if (!pixels) throw new Error(`Unable to determine iOS AppIcon pixel size for ${row.filename}`);
     await sharp(sourcePath)
       .resize(pixels, pixels, { fit: 'contain', background: theme })
       .flatten({ background: theme })
