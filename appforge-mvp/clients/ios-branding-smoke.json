@@ -1,0 +1,52 @@
+{
+  "factoryVersion": "0.8.1",
+  "platform": "ios",
+  "appId": "ai.gaotus.appforge.iosbranding",
+  "appName": "AppForge iOS Branding Smoke",
+  "mode": "remote",
+  "url": "https://example.com/",
+  "iconUrl": "https://raw.githubusercontent.com/hkv2020/gaotus-mobility-apps/appforge-mvp/appforge-mvp/test-assets/ios-branding-smoke.svg",
+  "themeColor": "#ff6b00",
+  "accentColor": "#111827",
+  "versionName": "0.8.1",
+  "versionCode": 81,
+  "features": {
+    "share": true,
+    "haptics": true,
+    "openExternal": true,
+    "deviceInfo": true,
+    "camera": false,
+    "location": false
+  },
+  "permissions": {
+    "camera": false,
+    "location": false,
+    "microphone": false,
+    "storage": false,
+    "vibration": true,
+    "play_services": false
+  },
+  "appSettings": {
+    "orientation": "portrait",
+    "fullscreen": false,
+    "pinch_zoom": true,
+    "disable_cache": false,
+    "kiosk_mode": false,
+    "scroll_bounce": true,
+    "pull_to_refresh": false,
+    "page_loader": false,
+    "confirm_exit": true
+  },
+  "linkHandling": {
+    "external_mode": "external",
+    "allow_subdomains": true,
+    "allow_http": false,
+    "deep_linking": false
+  },
+  "notifications": {"provider": "none"},
+  "security": {"prevent_screenshots": false, "biometric_lock": false},
+  "communication": {"native_share": true, "external_phone_email": true},
+  "deviceHardware": {"keep_screen_on": false},
+  "localisation": {"language": "en", "rtl": false},
+  "environment": []
+}
