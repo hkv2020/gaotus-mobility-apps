@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { rootDir, readJSON, validateClient } from './lib.mjs';
 
 const client = validateClient(readJSON(path.join(rootDir, 'generated-client.json')));
@@ -45,10 +46,6 @@ const topLevelDictClose = (xml) => {
   throw new Error('Info.plist root </dict> missing');
 };
 const ensureTopLevelStringKey = (xml, key, value) => {
-  // Capacitor's plist contains nested dictionaries. Always remove an existing
-  // managed key first, then insert it immediately before the ROOT dict closes.
-  // This prevents usage-description keys from accidentally landing inside
-  // UIApplicationSceneManifest or another nested dictionary.
   const clean = removePlistKey(xml, key);
   const close = topLevelDictClose(clean);
   const block = `\n\t<key>${key}</key>\n\t<string>${escapeXml(value)}</string>`;
@@ -61,6 +58,59 @@ else plist = removePlistKey(plist, 'NSLocationWhenInUseUsageDescription');
 if (permissions.microphone === true) plist = ensureTopLevelStringKey(plist, 'NSMicrophoneUsageDescription', `${client.appName} uses the microphone when you request it.`);
 else plist = removePlistKey(plist, 'NSMicrophoneUsageDescription');
 fs.writeFileSync(plistPath, plist);
+
+async function applyIOSBranding() {
+  const iconUrl = String(client.iconUrl || '').trim();
+  if (!iconUrl) return null;
+
+  const sourcePath = path.join(rootDir, 'assets', 'icon-only.png');
+  const setDir = path.join(appDir, 'Assets.xcassets', 'AppIcon.appiconset');
+  const contentsPath = path.join(setDir, 'Contents.json');
+  if (!fs.existsSync(sourcePath)) throw new Error('Custom iOS icon was configured but assets/icon-only.png is missing');
+  if (!fs.existsSync(contentsPath)) throw new Error('iOS AppIcon.appiconset/Contents.json is missing');
+
+  const sharpModule = await import('sharp');
+  const sharp = sharpModule.default;
+  const contents = JSON.parse(fs.readFileSync(contentsPath, 'utf8'));
+  const images = Array.isArray(contents.images) ? contents.images.filter((row) => row && row.filename) : [];
+  if (!images.length) throw new Error('iOS AppIcon Contents.json contains no file-backed icon entries');
+
+  const theme = /^#[0-9a-fA-F]{6}$/.test(String(client.themeColor || '')) ? String(client.themeColor) : '#111827';
+  const generated = [];
+  for (const row of images) {
+    const points = Number.parseFloat(String(row.size || '').split('x')[0]);
+    const scale = Number.parseFloat(String(row.scale || '').replace(/x$/i, ''));
+    if (!Number.isFinite(points) || points <= 0 || !Number.isFinite(scale) || scale <= 0) {
+      throw new Error(`Invalid iOS AppIcon size/scale for ${row.filename}`);
+    }
+    const pixels = Math.round(points * scale);
+    const target = path.join(setDir, String(row.filename));
+    await sharp(sourcePath)
+      .resize(pixels, pixels, { fit: 'contain', background: theme })
+      .flatten({ background: theme })
+      .png()
+      .toFile(target);
+    const meta = await sharp(target).metadata();
+    if (meta.width !== pixels || meta.height !== pixels || meta.hasAlpha === true) {
+      throw new Error(`Generated iOS AppIcon failed validation: ${row.filename}`);
+    }
+    generated.push({ file: row.filename, pixels, sha256: crypto.createHash('sha256').update(fs.readFileSync(target)).digest('hex') });
+  }
+
+  const report = {
+    ok: true,
+    sourceUrl: iconUrl,
+    sourceSha256: crypto.createHash('sha256').update(fs.readFileSync(sourcePath)).digest('hex'),
+    appIconSet: path.relative(rootDir, setDir),
+    generated,
+    verifiedAt: new Date().toISOString()
+  };
+  fs.writeFileSync(path.join(rootDir, 'ios-branding-verification.json'), JSON.stringify(report, null, 2) + '\n');
+  console.log('[AppForge] iOS AppIcon branding applied', JSON.stringify({ count: generated.length, sourceSha256: report.sourceSha256 }));
+  return report;
+}
+
+await applyIOSBranding();
 
 let scene = fs.readFileSync(scenePath, 'utf8');
 const env = {};
@@ -102,6 +152,26 @@ if (!scene.includes('gaotusAppForgeSdkSource')) {
   scene = scene.replace(handlerMarker, `${handlerMarker}\n        let gaotusAppForgeSdkSource = ${sdkSwift}\n        webView.configuration.userContentController.addUserScript(WKUserScript(source: gaotusAppForgeSdkSource, injectionTime: .atDocumentEnd, forMainFrameOnly: true))`);
 }
 
+const safeAreaMethod = `    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard let webView = bridge?.webView else { return }
+        let gaotusSafeAreaTopInset = view.safeAreaInsets.top
+        let gaotusSafeAreaFrame = CGRect(
+            x: 0,
+            y: gaotusSafeAreaTopInset,
+            width: view.bounds.width,
+            height: max(0, view.bounds.height - gaotusSafeAreaTopInset)
+        )
+        if webView.frame != gaotusSafeAreaFrame { webView.frame = gaotusSafeAreaFrame }
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+    }
+`;
+if (!scene.includes('gaotusSafeAreaTopInset')) {
+  const deinitMarker = '    deinit {';
+  if (!scene.includes(deinitMarker)) throw new Error('iOS GaotusViewController deinit marker missing for safe-area patch');
+  scene = scene.replace(deinitMarker, `${safeAreaMethod}\n${deinitMarker}`);
+}
+
 const extraCases = `
         case "ping", "deviceInfo":
             break
@@ -121,4 +191,4 @@ if (!scene.includes('case "copyToClipboard":')) {
   scene = scene.replace(switchMarker, `        switch action {${extraCases}        case "share":`);
 }
 fs.writeFileSync(scenePath, scene);
-console.log('[AppForge] iOS runtime patched', JSON.stringify({appId:client.appId, versionName:client.versionName, versionCode:client.versionCode, rtl, camera:permissions.camera===true, location:permissions.location===true, microphone:permissions.microphone===true}));
+console.log('[AppForge] iOS runtime patched', JSON.stringify({appId:client.appId, versionName:client.versionName, versionCode:client.versionCode, rtl, safeAreaTop:true, brandedIcon:Boolean(client.iconUrl), camera:permissions.camera===true, location:permissions.location===true, microphone:permissions.microphone===true}));
