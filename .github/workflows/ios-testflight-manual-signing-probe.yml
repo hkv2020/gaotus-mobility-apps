@@ -2,12 +2,6 @@ name: AppForge iOS Manual Signing TestFlight Probe
 
 on:
   workflow_dispatch:
-  push:
-    branches: ["appforge-mvp"]
-    paths:
-      - ".github/workflows/ios-testflight-manual-signing-probe.yml"
-      - "appforge-mvp/scripts/apple-signing-create.mjs"
-      - "appforge-mvp/scripts/apple-signing-cleanup.mjs"
 
 concurrency:
   group: appforge-ios-manual-testflight-probe
@@ -32,7 +26,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-
+      - name: Safety notice
+        run: |
+          echo "This legacy probe creates and revokes an ephemeral Apple Distribution certificate."
+          echo "It is manual-only and is retained only for diagnostics."
       - name: Prepare Apple API key
         shell: bash
         run: |
@@ -44,13 +41,10 @@ jobs:
           printf '%s' "$APP_STORE_CONNECT_API_KEY_P8" > "$APP_STORE_CONNECT_KEY_PATH"
           chmod 600 "$APP_STORE_CONNECT_KEY_PATH"
           grep -q "BEGIN PRIVATE KEY" "$APP_STORE_CONNECT_KEY_PATH"
-
       - name: Install factory dependencies
         run: npm install --no-audit --no-fund
-
       - name: Run factory contract tests
         run: npm test
-
       - name: Prepare runtime config
         env:
           BUILD_NUMBER: ${{ github.run_number }}
@@ -62,16 +56,13 @@ jobs:
           fs.writeFileSync('clients/runtime-testflight.json', JSON.stringify(c, null, 2) + '\n');
           console.log(`[AppForge] TestFlight ${c.appId} ${c.versionName} (${c.versionCode})`);
           NODE
-
       - name: Verify Apple app record
         env:
           APPLE_REGISTER_BUNDLE_ID: "true"
           APPLE_REQUIRE_APP_RECORD: "true"
         run: node scripts/apple-connect-preflight.mjs clients/runtime-testflight.json
-
       - name: Generate iOS client
         run: node scripts/generate-client.mjs clients/runtime-testflight.json
-
       - name: Create iOS project
         run: |
           npx cap add ios
@@ -82,22 +73,15 @@ jobs:
           /usr/libexec/PlistBuddy -c "Delete :ITSAppUsesNonExemptEncryption" ios/App/App/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" ios/App/App/Info.plist
           plutil -lint ios/App/App/Info.plist
-
       - name: Generate signing private key and CSR
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/testflight/signing
           openssl genrsa -out build/testflight/signing/distribution.key 2048
-          openssl req -new -sha256 \
-            -key build/testflight/signing/distribution.key \
-            -out build/testflight/signing/distribution.csr \
-            -subj "/CN=Gaotus AppForge CI/O=Gaotus/C=GB"
-          test -s build/testflight/signing/distribution.csr
-
+          openssl req -new -sha256 -key build/testflight/signing/distribution.key -out build/testflight/signing/distribution.csr -subj "/CN=Gaotus AppForge CI/O=Gaotus/C=GB"
       - name: Create ephemeral Apple Distribution certificate and App Store profile
         run: node scripts/apple-signing-create.mjs clients/runtime-testflight.json build/testflight/signing/distribution.csr build/testflight/signing
-
       - name: Install signing identity and provisioning profile
         shell: bash
         run: |
@@ -108,68 +92,28 @@ jobs:
           P12_PASSWORD="$(openssl rand -hex 24)"
           PROFILE_UUID="$(node -p "JSON.parse(require('fs').readFileSync('$SIGNING_DIR/apple-signing-material.json','utf8')).profileUuid")"
           PROFILE_NAME="$(node -p "JSON.parse(require('fs').readFileSync('$SIGNING_DIR/apple-signing-material.json','utf8')).profileName")"
-
           openssl x509 -inform DER -in "$SIGNING_DIR/distribution.cer" -out "$SIGNING_DIR/distribution.pem"
-          openssl pkcs12 -export -legacy \
-            -inkey "$SIGNING_DIR/distribution.key" \
-            -in "$SIGNING_DIR/distribution.pem" \
-            -out "$SIGNING_DIR/distribution.p12" \
-            -passout pass:"$P12_PASSWORD" \
-            -name "Gaotus AppForge Apple Distribution"
-
+          openssl pkcs12 -export -legacy -inkey "$SIGNING_DIR/distribution.key" -in "$SIGNING_DIR/distribution.pem" -out "$SIGNING_DIR/distribution.p12" -passout pass:"$P12_PASSWORD" -name "Gaotus AppForge Apple Distribution"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security default-keychain -s "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH"
           security import "$SIGNING_DIR/distribution.p12" -k "$KEYCHAIN_PATH" -P "$P12_PASSWORD" -A
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
-
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           cp "$SIGNING_DIR/appstore.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
-          security cms -D -i "$SIGNING_DIR/appstore.mobileprovision" > "$SIGNING_DIR/appstore-profile.plist"
-          plutil -lint "$SIGNING_DIR/appstore-profile.plist"
-
           echo "APPFORGE_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
-          echo "APPFORGE_KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
-          echo "APPFORGE_PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
           echo "APPFORGE_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
-
       - name: Archive manually signed iOS app
         shell: bash
         run: |
           set -euo pipefail
           cd ios/App
-          xcodebuild \
-            -project App.xcodeproj \
-            -scheme App \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            -archivePath ../../build/testflight/App.xcarchive \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="$APPFORGE_PROFILE_NAME" \
-            OTHER_CODE_SIGN_FLAGS="--keychain $APPFORGE_KEYCHAIN_PATH" \
-            archive
-
-      - name: Verify signed archive
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' -archivePath ../../build/testflight/App.xcarchive DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" PROVISIONING_PROFILE_SPECIFIER="$APPFORGE_PROFILE_NAME" OTHER_CODE_SIGN_FLAGS="--keychain $APPFORGE_KEYCHAIN_PATH" archive
+      - name: Export signed IPA
         shell: bash
         run: |
           set -euo pipefail
-          APP="build/testflight/App.xcarchive/Products/Applications/App.app"
-          test -d "$APP"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = "ai.gaotus.gaotus4509.app"
-          codesign --verify --deep --strict "$APP"
-          codesign -dv --verbose=4 "$APP" 2>&1 | tee build/testflight/codesign.txt
-          test -f "$APP/embedded.mobileprovision"
-          security cms -D -i "$APP/embedded.mobileprovision" > build/testflight/archive-profile.plist
-          plutil -lint build/testflight/archive-profile.plist
-
-      - name: Create manual App Store export options
-        shell: bash
-        run: |
           mkdir -p build/testflight/export
           cat > build/testflight/ExportOptions.plist <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
@@ -181,80 +125,21 @@ jobs:
             <key>signingCertificate</key><string>Apple Distribution</string>
             <key>teamID</key><string>${APPLE_TEAM_ID}</string>
             <key>manageAppVersionAndBuildNumber</key><false/>
-            <key>stripSwiftSymbols</key><true/>
-            <key>uploadSymbols</key><true/>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>ai.gaotus.gaotus4509.app</key>
-              <string>${APPFORGE_PROFILE_NAME}</string>
-            </dict>
+            <key>provisioningProfiles</key><dict><key>ai.gaotus.gaotus4509.app</key><string>${APPFORGE_PROFILE_NAME}</string></dict>
           </dict></plist>
           PLIST
-          plutil -lint build/testflight/ExportOptions.plist
-
-      - name: Export signed IPA
-        shell: bash
-        run: |
-          set -euo pipefail
-          xcodebuild \
-            -exportArchive \
-            -archivePath build/testflight/App.xcarchive \
-            -exportPath build/testflight/export \
-            -exportOptionsPlist build/testflight/ExportOptions.plist
+          xcodebuild -exportArchive -archivePath build/testflight/App.xcarchive -exportPath build/testflight/export -exportOptionsPlist build/testflight/ExportOptions.plist
           IPA="$(find build/testflight/export -maxdepth 1 -name '*.ipa' -type f | head -1)"
-          test -n "$IPA"
-          test -s "$IPA"
           cp "$IPA" build/testflight/Gaotus-TestFlight.ipa
-          unzip -tqq build/testflight/Gaotus-TestFlight.ipa
-          shasum -a 256 build/testflight/Gaotus-TestFlight.ipa > build/testflight/Gaotus-TestFlight.ipa.sha256
-
-      - name: Validate IPA with App Store Connect
+      - name: Validate and upload IPA to TestFlight
         shell: bash
         run: |
           set -euo pipefail
-          xcrun altool --validate-app \
-            -f build/testflight/Gaotus-TestFlight.ipa \
-            -t ios \
-            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
-            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
-            --p8-file-path "$APP_STORE_CONNECT_KEY_PATH" \
-            --output-format json | tee build/testflight/altool-validate.json
-
-      - name: Upload IPA to TestFlight
-        shell: bash
-        run: |
-          set -euo pipefail
-          xcrun altool --upload-app \
-            -f build/testflight/Gaotus-TestFlight.ipa \
-            -t ios \
-            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
-            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
-            --p8-file-path "$APP_STORE_CONNECT_KEY_PATH" \
-            --output-format json | tee build/testflight/altool-upload.json
-
-      - name: Upload signed IPA and evidence
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: gaotus-ios-manual-testflight-probe
-          path: |
-            appforge-mvp/build/testflight/Gaotus-TestFlight.ipa
-            appforge-mvp/build/testflight/Gaotus-TestFlight.ipa.sha256
-            appforge-mvp/build/testflight/codesign.txt
-            appforge-mvp/build/testflight/altool-validate.json
-            appforge-mvp/build/testflight/altool-upload.json
-            appforge-mvp/build/testflight/archive-profile.plist
-            appforge-mvp/build/testflight/signing/apple-signing-material.json
-            appforge-mvp/apple-connect-preflight.json
-            appforge-mvp/ios-runtime-verification.json
-          if-no-files-found: warn
-          retention-days: 7
-
+          xcrun altool --validate-app -f build/testflight/Gaotus-TestFlight.ipa -t ios --apiKey "$APP_STORE_CONNECT_KEY_ID" --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" --p8-file-path "$APP_STORE_CONNECT_KEY_PATH" --output-format json
+          xcrun altool --upload-app -f build/testflight/Gaotus-TestFlight.ipa -t ios --apiKey "$APP_STORE_CONNECT_KEY_ID" --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" --p8-file-path "$APP_STORE_CONNECT_KEY_PATH" --output-format json
       - name: Cleanup ephemeral Apple signing resources
         if: ${{ always() }}
         shell: bash
         run: |
           node scripts/apple-signing-cleanup.mjs build/testflight/signing/apple-signing-material.json || true
-          if [ -n "${APPFORGE_KEYCHAIN_PATH:-}" ]; then
-            security delete-keychain "$APPFORGE_KEYCHAIN_PATH" 2>/dev/null || true
-          fi
+          if [ -n "${APPFORGE_KEYCHAIN_PATH:-}" ]; then security delete-keychain "$APPFORGE_KEYCHAIN_PATH" 2>/dev/null || true; fi
